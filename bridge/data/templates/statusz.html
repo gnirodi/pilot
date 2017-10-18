@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head> 
+  <title>Istio Hybrid Multi-zone Demo</title>
+  <link rel="stylesheet" type="text/css" href="/statusz.css" />
+</head>
+<body>
+<h1>Istio Multi-Zone Sync Server</h1>
+<div class="sts">
+  <div class="snm">Node Name</div> <div class="svl">{{ index .ProcInfo "MY_NODE_NAME" }}</div>
+  <div class="snm">Pod Namespace</div> <div class="svl">{{ index .ProcInfo "MY_POD_NAMESPACE" }}</div>
+  <div class="snm">Pod Name</div> <div class="svl">{{ index .ProcInfo "MY_POD_NAME" }}</div>
+  <div class="snm">Pod IP</div> <div class="svl">{{ index .ProcInfo "MY_POD_IP" }}</div>
+  <div class="snm">Status</div> <div class="svl-ok">{{ index .ProcInfo "MY_SERVER_STATUS" }}</div>
+</div>
+<hr>
+
+<form action="/index.html" method="get">
+  <b>Check Server Health:</b> Server IP or Service Name <input type="text" name="targetserver"> <input type="submit" value="Submit">
+</form>
+{{if .TargetHealthzResponse}}
+<br>
+Server Healthz Response:
+<pre>
+{{.TargetHealthzResponse}}
+</pre>
+{{end}}
+<hr>
+</body>
+</html>

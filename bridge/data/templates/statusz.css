@@ -1,0 +1,23 @@
+h1 {
+  text-align: center;
+}
+
+.sts {
+  display: grid;
+  max-width: 100%;
+  grid-template-columns: repeat(5, 1fr 2fr);
+}
+
+.snm {
+  font-weight: bold;
+  text-align: right;
+  padding-right: 10px;
+}
+
+.svl {
+  font-weight: normal;
+}
+
+.svl-ok {
+  color: #808080;
+}
