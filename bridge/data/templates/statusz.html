@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head> 
-  <title>Istio Hybrid Multi-zone Demo</title>
+  <title>{{ index .ProcInfo "STATUS_HEADER" }}</title>
   <link rel="stylesheet" type="text/css" href="/statusz.css" />
 </head>
 <body>
-<h1>Istio Multi-Zone Sync Server</h1>
+<h1>{{ index .ProcInfo "STATUS_HEADER" }}</h1>
 <div class="sts">
   <div class="snm">Node Name</div> <div class="svl">{{ index .ProcInfo "MY_NODE_NAME" }}</div>
   <div class="snm">Pod Namespace</div> <div class="svl">{{ index .ProcInfo "MY_POD_NAMESPACE" }}</div>

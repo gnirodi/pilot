@@ -25,6 +25,8 @@ const  (
 	EnvVarPodIP = "MY_POD_IP"
 	EnvVarPodServiceAccount = "MY_POD_SERVICE_ACCOUNT"
 	ServerStatus = "MY_SERVER_STATUS"
+	StatusHeader = "STATUS_HEADER"
+	ServerStatusHeader = "Istio Hybrid Multi-cluster Mesh Status"
 )
 
 var templateDir = flag.String("template_dir", "data/templates", "Root path for HTML templates")
@@ -35,7 +37,8 @@ type StatuszInfo struct {
 	TargetHealthzResponse *string
 }
 
-func buildStatus(m *map[string]string) {
+func buildStatus(m *map[string]string, statusHeader string) {
+	(*m)[StatusHeader] = statusHeader
 	(*m)[EnvVarNodeName] = os.Getenv(EnvVarNodeName)
 	(*m)[EnvVarPodName] = os.Getenv(EnvVarPodName)
 	(*m)[EnvVarPodNamespace] = os.Getenv(EnvVarPodNamespace)
@@ -52,7 +55,7 @@ func main() {
 	})
 	
 	pi := make(map[string]string)
-	buildStatus(&pi)
+	buildStatus(&pi, ServerStatusHeader)
 	si := StatuszInfo { &pi, nil }
 	
   // Handle all templates
