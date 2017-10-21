@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head> 
-  <title>{{ index .ProcInfo "STATUS_HEADER" }}</title>
+  <title>{{ index .ProcInfo "STATUS_HEADER" }} {{ index .ProcInfo "MY_NODE_NAME" }} </title>
   <link rel="stylesheet" type="text/css" href="/statusz.css" />
 </head>
 <body>
@@ -20,7 +20,7 @@
 </form>
 {{if .TargetHealthzResponse}}
 <br>
-Server Healthz Response:
+Server Healthz Response from: {{.TargetUrl}}
 <pre>
 {{.TargetHealthzResponse}}
 </pre>

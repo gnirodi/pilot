@@ -18,22 +18,23 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 )
 
-const  (
-	EnvVarNodeName = "MY_NODE_NAME"
-	EnvVarPodName = "MY_POD_NAME"
-	EnvVarPodNamespace = "MY_POD_NAMESPACE"
-	EnvVarPodIP = "MY_POD_IP"
+const (
+	EnvVarNodeName          = "MY_NODE_NAME"
+	EnvVarPodName           = "MY_POD_NAME"
+	EnvVarPodNamespace      = "MY_POD_NAMESPACE"
+	EnvVarPodIP             = "MY_POD_IP"
 	EnvVarPodServiceAccount = "MY_POD_SERVICE_ACCOUNT"
-	ServerStatus = "MY_SERVER_STATUS"
-	StatusHeader = "STATUS_HEADER"
-	ServerStatusHeader = "Istio Hybrid Multi-cluster Mesh Status"
+	ServerStatus            = "MY_SERVER_STATUS"
+	StatusHeader            = "STATUS_HEADER"
+	ServerStatusHeader      = "Istio Hybrid Multi-Zone Mesh Status"
 )
 
 var templateDir = flag.String("template_dir", "data/templates", "Root path for HTML templates")
 var httpPort = flag.String("http_port", "8080", "Port for serving http traffic")
 
 type StatuszInfo struct {
-	ProcInfo *map[string]string
+	ProcInfo              *map[string]string
+	TargetUrl             *string
 	TargetHealthzResponse *string
 }
 
@@ -53,51 +54,54 @@ func main() {
 	flag.VisitAll(func(f *flag.Flag) {
 		fmt.Printf("--%-15.15s:%s\n", f.Name, f.Value.String())
 	})
-	
+
 	pi := make(map[string]string)
 	buildStatus(&pi, ServerStatusHeader)
-	si := StatuszInfo { &pi, nil }
-	
-  // Handle all templates
+	si := StatuszInfo{&pi, nil, nil}
+
+	// Handle all templates
 	pattern := filepath.Join(*templateDir, "*")
 	tmpl := template.Must(template.ParseGlob(pattern))
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			t := r.FormValue("targetserver")
-			var targetResp string
-			if len(t) > 0 {
-				if resp, err := http.Get("http://" + t + "/healthz.html"); err == nil {
-					defer resp.Body.Close()
-					if body, err := ioutil.ReadAll(resp.Body); err == nil {
-						targetResp = string(body)
-						si.TargetHealthzResponse = &targetResp
-					} else {
-						targetResp = err.Error();
-						si.TargetHealthzResponse = &targetResp
-					}
+		t := r.FormValue("targetserver")
+		var targetResp string
+		if len(t) > 0 {
+			if resp, err := http.Get("http://" + t + "/healthz.html"); err == nil {
+				defer resp.Body.Close()
+				if body, err := ioutil.ReadAll(resp.Body); err == nil {
+					targetResp = string(body)
+					si.TargetUrl = &t
+					si.TargetHealthzResponse = &targetResp
 				} else {
-					targetResp = err.Error();
+					targetResp = err.Error()
+					si.TargetUrl = &t
 					si.TargetHealthzResponse = &targetResp
 				}
 			} else {
-				si.TargetHealthzResponse = nil
+				targetResp = err.Error()
+				si.TargetHealthzResponse = &targetResp
 			}
-			err := tmpl.ExecuteTemplate(w, "statusz.html", &si)
-			if err != nil {
-				fmt.Printf("Error in statusz.html:\n%s", err.Error())
-			}
+		} else {
+			si.TargetUrl = nil
+			si.TargetHealthzResponse = nil
+		}
+		err := tmpl.ExecuteTemplate(w, "statusz.html", &si)
+		if err != nil {
+			fmt.Printf("Error in statusz.html:\n%s", err.Error())
+		}
 	})
 	http.HandleFunc("/healthz.html", func(w http.ResponseWriter, r *http.Request) {
-			err := tmpl.ExecuteTemplate(w, "healthz.html", &pi)
-			if err != nil {
-				fmt.Printf("Error in statusz.css:\n%s", err.Error())
-			}
+		err := tmpl.ExecuteTemplate(w, "healthz.html", &pi)
+		if err != nil {
+			fmt.Printf("Error in statusz.css:\n%s", err.Error())
+		}
 	})
 	http.HandleFunc("/statusz.css", func(w http.ResponseWriter, r *http.Request) {
-			http.ServeFile(w, r, filepath.Join(*templateDir , "/statusz.css"))
+		http.ServeFile(w, r, filepath.Join(*templateDir, "/statusz.css"))
 	})
-	
+
 	go http.ListenAndServe(":"+*httpPort, nil)
-	
+
 	// Start syncing state
 	var kubeconfig *string
 	if home := homeDir(); home != "" {
@@ -122,7 +126,7 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	
+
 	for {
 		// TODO namespace must be config derived
 		services, err := clientset.CoreV1().Services("default").List(metav1.ListOptions{})
