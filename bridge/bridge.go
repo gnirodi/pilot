@@ -129,7 +129,7 @@ func main() {
 
 	for {
 		// TODO namespace must be config derived
-		services, err := clientset.CoreV1().Services("default").List(metav1.ListOptions{})
+		services, err := clientset.CoreV1().Services("").List(metav1.ListOptions{})
 		if err != nil {
 			panic(err.Error())
 		}

@@ -1,0 +1,10 @@
+# Endpoints for the HEADLESS demo-app-service with NO selectors
+kind: Endpoints
+apiVersion: v1
+metadata:
+  name: demo-app-service
+subsets:
+  - addresses:
+      - ip: 10.16.2.18
+    ports:
+      - port: 8080
