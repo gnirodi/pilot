@@ -8,9 +8,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"istio.io/pilot/bridge/controllers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -127,19 +126,21 @@ func main() {
 		panic(err.Error())
 	}
 
-	for {
-		// TODO namespace must be config derived
-		services, err := clientset.CoreV1().Services("").List(metav1.ListOptions{})
-		if err != nil {
-			panic(err.Error())
-		}
-		fmt.Printf("\n-------------------------------\nThere are %d services in the cluster\n", len(services.Items))
-		for _, service := range services.Items {
-			fmt.Printf("Service: %s\n", service.GetName())
-		}
+	podHandler := new(controllers.PodHandler)
+	podController := controllers.CreateController(clientset, podHandler)
 
-		time.Sleep(10 * time.Second)
-	}
+	svcHandler := new(controllers.ServiceHandler)
+	svcController := controllers.CreateController(clientset, svcHandler)
+
+	// Now let's start the controllers
+	stop := make(chan struct{})
+	defer close(stop)
+
+	go podController.Run(1, stop)
+	go svcController.Run(1, stop)
+
+	// Wait forever
+	select {}
 }
 
 func homeDir() string {

@@ -1,0 +1,21 @@
+package: istio.io/pilot/bridge
+import:
+- package: github.com/golang/glog
+- package: k8s.io/api
+  subpackages:
+  - core/v1
+- package: k8s.io/apimachinery
+  subpackages:
+  - pkg/apis/meta/v1
+  - pkg/fields
+  - pkg/util/runtime
+  - pkg/util/wait
+- package: k8s.io/client-go
+  version: ^5.0.0
+  subpackages:
+  - kubernetes
+  - plugin/pkg/client/auth/gcp
+  - rest
+  - tools/cache
+  - tools/clientcmd
+  - util/workqueue

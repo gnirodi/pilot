@@ -1,0 +1,9 @@
+apiVersion: "config.istio.io/v1"
+kind: Mesh
+metadata:
+  name: demo-mesh
+spec:
+  zones:
+  - name: gke_istio-hybrid_us-west1-c_hybrid-master
+    agent_endpoint: 10.59.240.215:8080
+  - name: gke_istio-hybrid_us-west1-c_hybrid-master

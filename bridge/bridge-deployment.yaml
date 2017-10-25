@@ -4,6 +4,7 @@ metadata:
   name: bridge
   labels:
     app: istio-mesh-sync-agent
+    version: "1.2"
 spec:
   replicas: 1
   template:

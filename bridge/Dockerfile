@@ -11,7 +11,9 @@
 FROM golang
 
 # Copy the local package files to the container's workspace.
-ADD . /go/src/github.com/istio/pilot/bridge
+ADD . /go/src/istio.io/pilot/bridge
+
+ADD controllers /go/src/istio.io/pilot/bridge/controllers
 
 # Add the web server's doc root.
 ADD data /go/data
@@ -20,7 +22,7 @@ ADD data /go/data
 # Build the webservice application for the container.
 # This service has no dependencies for now. But if we add deps
 # we'll need to add them here manually or tools like "godep"
-RUN go install github.com/istio/pilot/bridge
+RUN go install istio.io/pilot/bridge
 
 # Run the webservice command by default when the container starts.
 ENTRYPOINT /go/bin/bridge
