@@ -32,9 +32,15 @@ type Mesh struct {
 	Status            MeshStatus `json:"status,omitempty"`
 }
 
+// +k8s:deepcopy-gen=true,register=k8s.io/apimachinery/pkg/runtime.Object
+type ZoneSpec struct {
+	ZoneName         string `json:"zoneName"`
+	MeshSyncAgentVip string `json:"meshSyncAgentVip"`
+}
+
+// +k8s:deepcopy-gen=true,register=k8s.io/apimachinery/pkg/runtime.Object
 type MeshSpec struct {
-	Foo string `json:"foo"`
-	Bar bool   `json:"bar"`
+	Zones []ZoneSpec `json:"zones"`
 }
 
 type MeshStatus struct {
