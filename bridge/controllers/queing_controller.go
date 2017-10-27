@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang/glog"
 
+	meshv1 "istio.io/pilot/bridge/clientset/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -135,6 +136,51 @@ func CreateController(clientset *kubernetes.Clientset, handler interface{}) *Con
 
 	// create the object watcher
 	objListWatcher := cache.NewListWatchFromClient(clientset.CoreV1().RESTClient(), h.GetTypeNamePlural(), "", fields.Everything())
+
+	// create the workqueue
+	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+
+	// Bind the workqueue to a cache with the help of an informer. This way we make sure that
+	// whenever the cache is updated, the objects key is added to the workqueue.
+	// Note that when we finally process the item from the workqueue, we might see a newer version
+	// of the Object than the version which was responsible for triggering the update.
+	indexer, informer := cache.NewIndexerInformer(objListWatcher, h.GetObjectType(), 0, cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			key, err := cache.MetaNamespaceKeyFunc(obj)
+			if err == nil {
+				queue.Add(key)
+			}
+		},
+		UpdateFunc: func(old interface{}, new interface{}) {
+			key, err := cache.MetaNamespaceKeyFunc(new)
+			if err == nil {
+				queue.Add(key)
+			}
+		},
+		DeleteFunc: func(obj interface{}) {
+			// IndexerInformer uses a delta queue, therefore for deletes we have to use this
+			// key function.
+			key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
+			if err == nil {
+				queue.Add(key)
+			}
+		},
+	}, cache.Indexers{})
+
+	controller := NewController(queue, indexer, informer, &h)
+
+	return controller
+}
+
+func CreateCrdController(clientset *meshv1.Clientset, handler interface{}) *Controller {
+
+	h, ok := handler.(ControllerHandler)
+	if !ok {
+		glog.Fatal("Incorrect handler interface. Expecting a ControllerHandler")
+	}
+
+	// create the object watcher
+	objListWatcher := cache.NewListWatchFromClient(clientset.PkgV1().RESTClient(), h.GetTypeNamePlural(), "", fields.Everything())
 
 	// create the workqueue
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())

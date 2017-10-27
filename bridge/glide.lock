@@ -1,5 +1,5 @@
 hash: 77de60aee1cc4bd02745140be783d821fc7c00354b54f07e56ed91c48d6ca6c2
-updated: 2017-10-24T14:23:42.691237022-07:00
+updated: 2017-10-26T14:21:08.881088529-07:00
 imports:
 - name: cloud.google.com/go
   version: 3b1ae45394a234c385be014e9a488f2bb6eef821
@@ -23,9 +23,9 @@ imports:
 - name: github.com/go-openapi/jsonreference
   version: 13c6e3589ad90f49bd3e3bbe2c2cb3d7a4142272
 - name: github.com/go-openapi/spec
-  version: 7abd5745472fff5eb3685386d5fb8bf38683154d
+  version: 6aced65f8501fe1217321abf0749d354824ba2ff
 - name: github.com/go-openapi/swag
-  version: f3f9494671f93fcff853e3c6e9e948b3eb71e590
+  version: 1d0bd113de87027671077d3c71eb3ac5d7dbba72
 - name: github.com/gogo/protobuf
   version: c0656edd0d9eab7c66d1eb0c568f9039345796f7
   subpackages:
@@ -68,7 +68,7 @@ imports:
 - name: github.com/juju/ratelimit
   version: 5b9ff866471762aa2ab2dced63c9fb6f53921342
 - name: github.com/mailru/easyjson
-  version: 2f5df55504ebc322e4d52d34df6a1f5b503bf26d
+  version: d5b7844b561a7bc640052f1b935f7b800330d7e0
   subpackages:
   - buffer
   - jlexer
@@ -90,13 +90,10 @@ imports:
   subpackages:
   - context
   - context/ctxhttp
-  - html
-  - html/atom
   - http2
   - http2/hpack
   - idna
   - lex/httplex
-  - websocket
 - name: golang.org/x/oauth2
   version: a6bd8cefa1811bd24b86f8902872e4e8225f74c4
   subpackages:
@@ -140,7 +137,7 @@ imports:
 - name: gopkg.in/yaml.v2
   version: 53feefa2559fb8dfa8d81baad31be332c97d6c77
 - name: k8s.io/api
-  version: fe29995db37613b9c5b2a647544cf627bfa8d299
+  version: 6c6dac0277229b9e9578c5ca3f74a4345d35cdc2
   subpackages:
   - admissionregistration/v1alpha1
   - apps/v1beta1
@@ -210,7 +207,7 @@ imports:
   - pkg/watch
   - third_party/forked/golang/reflect
 - name: k8s.io/client-go
-  version: 35874c597fed17ca62cd197e516d7d5ff9a2958c
+  version: 2ae454230481a7cb5544325e12ad7658ecccd19b
   subpackages:
   - discovery
   - kubernetes

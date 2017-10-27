@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	meshv1 "istio.io/pilot/bridge/clientset/v1"
 	"istio.io/pilot/bridge/controllers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -126,11 +127,19 @@ func main() {
 		panic(err.Error())
 	}
 
+	mshClientset, err := meshv1.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
+
 	podHandler := new(controllers.PodHandler)
 	podController := controllers.CreateController(clientset, podHandler)
 
 	svcHandler := new(controllers.ServiceHandler)
 	svcController := controllers.CreateController(clientset, svcHandler)
+
+	mshHandler := new(controllers.MeshHandler)
+	mshController := controllers.CreateCrdController(mshClientset, mshHandler)
 
 	// Now let's start the controllers
 	stop := make(chan struct{})
@@ -138,6 +147,7 @@ func main() {
 
 	go podController.Run(1, stop)
 	go svcController.Run(1, stop)
+	go mshController.Run(1, stop)
 
 	// Wait forever
 	select {}
