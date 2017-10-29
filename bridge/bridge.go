@@ -11,6 +11,7 @@ import (
 
 	meshv1 "istio.io/pilot/bridge/clientset/v1"
 	"istio.io/pilot/bridge/controllers"
+	"istio.io/pilot/bridge/mesh"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -31,6 +32,7 @@ const (
 
 var templateDir = flag.String("template_dir", "data/templates", "Root path for HTML templates")
 var httpPort = flag.String("http_port", "8080", "Port for serving http traffic")
+var nsIgnoreRegex = flag.String("namespace_ignore_list", "kube-system", "Regex of namespaces that need to be ignored by this agent")
 
 type StatuszInfo struct {
 	ProcInfo              *map[string]string
@@ -148,6 +150,9 @@ func main() {
 	go podController.Run(1, stop)
 	go svcController.Run(1, stop)
 	go mshController.Run(1, stop)
+
+	sl := mesh.NewServiceList(*nsIgnoreRegex)
+	fmt.Printf("%v", sl)
 
 	// Wait forever
 	select {}
