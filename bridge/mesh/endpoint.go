@@ -23,6 +23,12 @@ type Endpoint struct {
 	PodLabels    map[string]string
 }
 
+// Maps an endpoint key to an Endpoint
+type KeyEndpointMap map[string]Endpoint
+
+// Maps a zone name to a KeyEndpointMap
+type ZoneKeyEndpointMap map[string]KeyEndpointMap
+
 func NewEndpoint(ns, svc, ip string, port v1.ContainerPort, pl map[string]string) *Endpoint {
 	ep := Endpoint{"", ns, svc, ip, port, []string{}, map[string]string{}}
 	lblIdx := 0

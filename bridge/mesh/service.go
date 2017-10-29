@@ -9,23 +9,28 @@ import (
 	"k8s.io/api/core/v1"
 )
 
-type ZoneType int
+type MeshServiceType int
 
 const (
 	LocalSvcAnnotation    = "config.istio.io/mesh.deployment-selector"
 	ExternalSvcAnnotation = "config.istio.io/mesh.zone"
-	UnknownZone           = ZoneType(0)
-	LocalZone             = ZoneType(1)
-	ExternalZone          = ZoneType(2)
+	UnknownZone           = MeshServiceType(0)
+	LocalZoneService      = MeshServiceType(1)
+	ExternalZoneService   = MeshServiceType(2)
+	NonMeshService        = MeshServiceType(3)
 )
 
 type Service struct {
-	Key         string
-	Name        string
-	Namespace   string
-	Labels      map[string]string
-	Type        ZoneType
-	ConfigDirty bool
+	Key              string
+	Name             string
+	Namespace        string
+	Labels           map[string]string
+	Type             MeshServiceType
+	ConfigDirty      bool
+	localAnnotation  string
+	localEndpointMap KeyEndpointMap
+	zoneEndpointMap  ZoneKeyEndpointMap
+	EndpointsDirty   bool
 }
 
 type ServiceList struct {
@@ -57,61 +62,95 @@ func (l *ServiceList) UpdateService(key string, svc *v1.Service) {
 		}
 		lclAnnot, laFound := svc.Annotations[LocalSvcAnnotation]
 		extAnnot, eaFound := svc.Annotations[ExternalSvcAnnotation]
-		if !laFound && !eaFound {
-			return
-		}
 		if laFound && eaFound {
-			glog.Errorf("Service named '%s' from namespace '%s' has conficting annotions '%s=%s' and '%s'='%s'. Only one or the other ought to be provided. Ignoring service update.",
+			glog.Errorf("Service named '%s' from namespace '%s' has conficting annotion '%s=%s' and '%s'='%s'. Only one or the other ought to be provided. Ignoring service update.",
 				svc.Name, ns, LocalSvcAnnotation, lclAnnot, ExternalSvcAnnotation, extAnnot)
 		}
 		ms, oldExists := l.serviceMap[key]
 		if oldExists {
 			switch {
-			case ms.Type == ExternalZone && laFound:
-				ms.Type = LocalZone
-				glog.Infof("External service named '%s' from namespace '%s' was updated with annotations '%s=%s'. Local endpoints will shortly be created",
+			case ms.Type == ExternalZoneService && laFound:
+				ms.Type = LocalZoneService
+				glog.Infof("External service named '%s' from namespace '%s' was updated with annotation '%s=%s'. Local endpoints will shortly be created",
 					svc.Name, ns, LocalSvcAnnotation, lclAnnot)
 				break
-			case ms.Type == LocalZone && eaFound:
-				glog.Infof("External service named '%s' from namespace '%s' was updated with annotations '%s=%s'. Local endpoints will shortly be deleted",
+			case ms.Type == LocalZoneService && eaFound:
+				glog.Infof("Local service named '%s' from namespace '%s' was updated with annotation '%s=%s'. Local endpoints will shortly be deleted",
 					svc.Name, ns, ExternalSvcAnnotation, extAnnot)
-				ms.Type = ExternalZone
+				ms.Type = ExternalZoneService
 				ms.ConfigDirty = false
-				break
-			case ms.Type == ExternalZone && eaFound:
-				ms.ConfigDirty = false
-				glog.V(2).Infof("Ignoring Service named '%s' from namespace '%s' in response to external service creation", svc.Name, ns)
+				ms.localAnnotation = ""
+				ms.Labels = map[string]string{}
+				if len(ms.localEndpointMap) > 0 {
+					ms.localEndpointMap = KeyEndpointMap{}
+					ms.EndpointsDirty = true
+				}
+				return
+			case ms.Type == ExternalZoneService && eaFound:
+				if ms.ConfigDirty {
+					glog.V(2).Infof("Acknowledging creation of external service with name '%s' from namespace '%s'", svc.Name, ns)
+					ms.ConfigDirty = false
+				} else {
+					glog.V(2).Infof("Ignoring creation of external service with name '%s' from namespace '%s'. This service was already noted as external", svc.Name, ns)
+				}
+				return
+			case ms.Type == LocalZoneService && laFound:
+				if ms.localAnnotation != lclAnnot && len(ms.localEndpointMap) > 0 {
+					glog.Infof("Acknowledging update of local service with name '%s' from namespace '%s'. Annotation '%s' changed from '%s' to '%s'",
+						svc.Name, ns, LocalSvcAnnotation, ms.localAnnotation, lclAnnot)
+					ms.localEndpointMap = KeyEndpointMap{}
+					ms.EndpointsDirty = true
+				} else {
+					glog.V(2).Infof("Ignoring creation of local service with name '%s' from namespace '%s' with no changes in annotation '%s=%s'",
+						svc.Name, ns, LocalSvcAnnotation, ms.localAnnotation)
+					return
+				}
+			case !laFound && !eaFound:
+				glog.Infof("Service named '%s' from namespace '%s' was updated with none of the annotations required for mesh operation: '%s', '%s'. Removing service from Mesh",
+					svc.Name, ns, LocalSvcAnnotation, ExternalSvcAnnotation)
+				ms.localAnnotation = ""
+				ms.Labels = map[string]string{}
+				ms.localEndpointMap = KeyEndpointMap{}
+				ms.zoneEndpointMap = ZoneKeyEndpointMap{}
+				ms.Type = NonMeshService
+				ms.EndpointsDirty = true
 				return
 			}
-		} else {
-			ztyp := UnknownZone
-			lblMap := map[string]string{}
-			if laFound {
-				ztyp = LocalZone
-				var mf interface{}
-				b := []byte{}
-				b = append(b, lclAnnot...)
-				err := json.Unmarshal(b, &mf)
-				if err != nil {
-					glog.Errorf("Service named '%s' from namespace '%s' has malformed annotion '%s=%s' Ignoring service update. %s",
-						svc.Name, ns, LocalSvcAnnotation, lclAnnot, err.Error())
-					return
-				}
-				lblMap = mf.(map[string]string)
-				if oldExists {
-					glog.Infof("Service named '%s' from namespace '%s' has updated annotion '%s=%s' Local endpoints will shortly be updated",
-						svc.Name, ns, LocalSvcAnnotation, lclAnnot)
-					ms.Labels = lblMap
-					return
-				}
-			} else {
-				// May have been created externally or by another local MSA
-				ztyp = ExternalZone
-			}
-			ms = Service{key, svc.Name, svc.Namespace, lblMap, ztyp, true}
-			l.serviceMap[key] = ms
 		}
+		ztyp := UnknownZone // Used only for new service creation
+		lblMap := map[string]string{}
+		if laFound {
+			ztyp = LocalZoneService
+			var mf interface{}
+			b := []byte{}
+			b = append(b, lclAnnot...)
+			err := json.Unmarshal(b, &mf)
+			if err != nil {
+				glog.Errorf("Service named '%s' from namespace '%s' has malformed annotion '%s=%s' Ignoring service update. %s",
+					svc.Name, ns, LocalSvcAnnotation, lclAnnot, err.Error())
+				return
+			}
+			lblMap = mf.(map[string]string)
+			if oldExists {
+				glog.Infof("Service named '%s' from namespace '%s' has updated annotion '%s=%s' Local endpoints will shortly be updated",
+					svc.Name, ns, LocalSvcAnnotation, lclAnnot)
+				ms.Labels = lblMap
+				return
+			}
+		} else if eaFound {
+			// May have been created externally or by another local MSA
+			ztyp = ExternalZoneService
+		}
+		// If !oldExists
+		ms = Service{key, svc.Name, svc.Namespace, lblMap, ztyp, true, lclAnnot, KeyEndpointMap{}, ZoneKeyEndpointMap{}, false}
+		l.serviceMap[key] = ms
 	} else {
-		delete(l.serviceMap, key)
+		// Deletion event
+		ms, oldExists := l.serviceMap[key]
+		if oldExists {
+			glog.Infof("Mesh service named '%s' from namespace '%s' was deleted'. Mesh endpoints will shortly be deleted",
+				ms.Name, ms.Namespace)
+			delete(l.serviceMap, key)
+		}
 	}
 }
