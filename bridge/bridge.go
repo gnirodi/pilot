@@ -134,13 +134,17 @@ func main() {
 		panic(err.Error())
 	}
 
-	podHandler := new(controllers.PodHandler)
+	pl := mesh.NewPodList(*nsIgnoreRegex)
+	sl := mesh.NewServiceList(*nsIgnoreRegex, pl)
+	agent := mesh.NewMeshSyncAgent(sl)
+
+	podHandler := controllers.PodHandler{}
 	podController := controllers.CreateController(clientset, podHandler)
 
-	svcHandler := new(controllers.ServiceHandler)
+	svcHandler := controllers.ServiceHandler{}
 	svcController := controllers.CreateController(clientset, svcHandler)
 
-	mshHandler := new(controllers.MeshHandler)
+	mshHandler := controllers.MeshHandler{}
 	mshController := controllers.CreateCrdController(mshClientset, mshHandler)
 
 	// Now let's start the controllers
@@ -151,8 +155,7 @@ func main() {
 	go svcController.Run(1, stop)
 	go mshController.Run(1, stop)
 
-	sl := mesh.NewServiceList(*nsIgnoreRegex)
-	fmt.Printf("%v", sl)
+	agent.Run()
 
 	// Wait forever
 	select {}

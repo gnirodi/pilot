@@ -11,6 +11,7 @@ import (
 
 // Pod representation within a Mesh
 type Pod struct {
+	// The key of the pod is expected to be unique within a given namespace of the local zone
 	Key         string
 	Namespace   string
 	Labels      map[string]string
@@ -42,20 +43,20 @@ type NamespacePodsMap map[string]NamespacePods
 // Map from pod key to namespace of the pod
 type PodKeyNamespaceMap map[string]string
 
-// Container for Pods belonging in the local mesh
-type LocalPodList struct {
+// Container for Pods belonging in the local zone
+type PodList struct {
 	nsIgnoreRegex      *regexp.Regexp
 	namespacePodsMap   NamespacePodsMap
 	podKeyNamespaceMap PodKeyNamespaceMap
 	mu                 sync.RWMutex
 }
 
-func NewLocalPodList(nsIgnoreRegex string) *LocalPodList {
+func NewPodList(nsIgnoreRegex string) *PodList {
 	regex, err := regexp.Compile(nsIgnoreRegex)
 	if err != nil {
 		glog.Fatal("Error compiling Namespace exclude regex")
 	}
-	return &LocalPodList{regex, NamespacePodsMap{}, PodKeyNamespaceMap{}, sync.RWMutex{}}
+	return &PodList{regex, NamespacePodsMap{}, PodKeyNamespaceMap{}, sync.RWMutex{}}
 }
 
 func deletePodReferences(key string, nsPods NamespacePods, keyNs PodKeyNamespaceMap) {
@@ -78,7 +79,7 @@ func deletePodReferences(key string, nsPods NamespacePods, keyNs PodKeyNamespace
 	}
 }
 
-func (l *LocalPodList) UpdatePod(key string, pod *v1.Pod) {
+func (l *PodList) UpdatePod(key string, pod *v1.Pod) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if pod != nil {
@@ -166,10 +167,14 @@ func (l *LocalPodList) UpdatePod(key string, pod *v1.Pod) {
 	}
 }
 
-func (l *LocalPodList) UpdateService(keySvcMap *map[string]Service) {
+func (l *PodList) GetExpectedEndpointSubsets(localZoneName string, keySvcMap *map[string]Service) (esm EndpointSubsetMap) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	for _, svc := range *keySvcMap {
+		if svc.SvcType != MeshService {
+			continue
+		}
+
 		// Get Pods for the service's namespace
 		ns := svc.Namespace
 		if ns == "" {
@@ -183,6 +188,7 @@ func (l *LocalPodList) UpdateService(keySvcMap *map[string]Service) {
 		// Get pods that match all label values for the service
 		minPksLen := math.MaxInt32
 		minPksKey := ""
+		// Label name to PodKeySet that has matching values
 		lblPksMap := map[string]PodKeySet{}
 		allKeyValsFound := true // All labels must have values
 		for k, v := range svc.Labels {
@@ -212,7 +218,7 @@ func (l *LocalPodList) UpdateService(keySvcMap *map[string]Service) {
 		minPks := lblPksMap[minPksKey]
 		delete(lblPksMap, minPksKey)
 		for mshpdKey, _ := range minPks {
-			// All other keysets much match
+			// All other keysets much match each pod keyset for the other labels
 			allKeysMatch := true
 			for _, pks := range lblPksMap {
 				_, hasKey := pks[mshpdKey]
@@ -226,5 +232,13 @@ func (l *LocalPodList) UpdateService(keySvcMap *map[string]Service) {
 			}
 			intPks[mshpdKey] = true
 		}
+		// We have the exact set of pods that match the service spec
+		for pk, _ := range intPks {
+			mshpd, _ := nsPods.keyPodMap[pk]
+			for _, t := range mshpd.EpTemplates {
+				esm.AddEndpoint(&t, svc.Name, localZoneName)
+			}
+		}
 	}
+	return
 }
