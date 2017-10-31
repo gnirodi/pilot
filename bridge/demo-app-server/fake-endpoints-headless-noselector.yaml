@@ -2,7 +2,7 @@
 kind: Endpoints
 apiVersion: v1
 metadata:
-  name: demo-app-service
+  name: demo-app-new-service
   labels:
     config.istio.io/mesh.endpoint: "true"
 subsets:

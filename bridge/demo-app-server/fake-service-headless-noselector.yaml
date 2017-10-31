@@ -1,0 +1,20 @@
+# HEADLESS demo-app-service with NO selectors
+kind: Service
+apiVersion: v1
+metadata:
+  name: demo-app-new-service
+  # Annotations for Istio Mesh
+  annotations:
+    config.istio.io/mesh.deployment-selector: |
+      {"app":"istio-demo-app-server"}
+spec:
+  # Service is HEADLESS
+  clusterIP: None
+
+  # Service has no selectors
+  #
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8080
+    targetPort: 8080

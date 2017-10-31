@@ -145,7 +145,7 @@ func (l *PodList) UpdatePod(key string, pod *v1.Pod) {
 		}
 
 		// Build Endpoint templates for the pod
-		epTemplate := NewEndpoint(ns, "", pod.Status.PodIP, v1.ContainerPort{}, mshpd.Labels)
+		epTemplate := NewEndpoint(ns, "", "", pod.Status.PodIP, v1.ContainerPort{}, mshpd.Labels)
 		for _, port := range podPorts {
 			mshpdEpTemplate := epTemplate.DeepCopy()
 			mshpdEpTemplate.SetPort(port)

@@ -12,14 +12,19 @@ import (
 
 const (
 	KeySeparator = "$$"
+	LabelZone    = "zone"
+	LabelService = "service"
+	LabelPort    = "port"
 )
 
 // Endpoint representation within a Mesh is a single unique svc ip:port combination
 type Endpoint struct {
 	// The key of the Endpoint is expected to be unique within a given namespace of the local zone
+	// It's a concat of Service, Namespace, Zone, PodIP, SrvPort, All key values of Labels
 	Key            string
 	Namespace      string
 	Service        string
+	Zone           string
 	PodIP          string
 	SrvPort        string
 	Port           v1.ContainerPort
@@ -37,6 +42,9 @@ type ZoneKeyEndpointMap map[string]KeyEndpointMap
 // It corresponds to exactly one v1.Endpoint which will typically have only one subset
 type EndpointSubset struct {
 	// The human readable key for the subset
+	// It's a concat of t.Service, t.Namespace, Zone along with
+	//		SrvPort, KeyLabelSuffix that are common
+	// to all Endpoints in the subset
 	Key string
 	// The k8s endpoint object name unique for the zone
 	Name           string
@@ -57,8 +65,8 @@ func NewEndpointSubsetMap() *EndpointSubsetMap {
 	return &EndpointSubsetMap{map[string]EndpointSubset{}, map[string]bool{}}
 }
 
-func NewEndpoint(ns, svc, ip string, port v1.ContainerPort, pl map[string]string) *Endpoint {
-	ep := Endpoint{"", ns, svc, ip, "", port, "", map[string]string{}}
+func NewEndpoint(ns, svc, zone, ip string, port v1.ContainerPort, pl map[string]string) *Endpoint {
+	ep := Endpoint{"", ns, svc, zone, ip, "", port, "", map[string]string{}}
 	sortedLabelNames := []string{}
 	for k, v := range pl {
 		sortedLabelNames = append(sortedLabelNames, k)
@@ -81,14 +89,15 @@ func (ep *Endpoint) SetPort(port v1.ContainerPort) {
 	if ep.SrvPort == "" {
 		ep.SrvPort = fmt.Sprintf("%d", port.ContainerPort)
 	}
+	ep.Port = port
 }
 
 func (ep *Endpoint) ComputeKeyForSortedLabels() {
-	ep.Key = strings.Join([]string{ep.Service, ep.Namespace, ep.PodIP, ep.SrvPort, ep.KeyLabelSuffix}, KeySeparator)
+	ep.Key = strings.Join([]string{ep.Service, ep.Namespace, ep.Zone, ep.PodIP, ep.SrvPort, ep.KeyLabelSuffix}, KeySeparator)
 }
 
 func (ep *Endpoint) DeepCopy() Endpoint {
-	cp := Endpoint{ep.Key, ep.Namespace, ep.Service, ep.PodIP, ep.SrvPort, ep.Port, ep.KeyLabelSuffix, make(map[string]string, len(ep.PodLabels))}
+	cp := Endpoint{ep.Key, ep.Namespace, ep.Service, ep.Zone, ep.PodIP, ep.SrvPort, ep.Port, ep.KeyLabelSuffix, make(map[string]string, len(ep.PodLabels))}
 	for k, v := range ep.PodLabels {
 		cp.PodLabels[k] = v
 	}
@@ -122,16 +131,100 @@ func (m *EndpointSubsetMap) EnsureUniqueName(eps *EndpointSubset) {
 	}
 }
 
-func (m *EndpointSubsetMap) AddEndpoint(t *Endpoint, s string, z string) {
-	ep := t.DeepCopy()
-	ep.Service = s
+func (t *Endpoint) BuildSubsetKey() string {
+	return strings.Join([]string{t.Service, t.Namespace, t.Zone, t.SrvPort, t.KeyLabelSuffix}, KeySeparator)
+}
+
+func (m *EndpointSubsetMap) AddEndpoint(template *Endpoint, svc string, zone string) {
+	ep := template.DeepCopy()
+	ep.Service = svc
+	ep.Zone = zone
 	ep.ComputeKeyForSortedLabels()
-	subsetKey := strings.Join([]string{ep.Service, ep.Namespace, z, ep.SrvPort, ep.KeyLabelSuffix}, KeySeparator)
+	subsetKey := ep.BuildSubsetKey()
 	ss, ssFound := m.epSubset[subsetKey]
 	if !ssFound {
-		ss = *NewEndpointSubset(subsetKey, ep.Namespace, s, z, ep.PodLabels)
+		ss = *NewEndpointSubset(subsetKey, ep.Namespace, svc, zone, ep.PodLabels)
 		m.EnsureUniqueName(&ss)
 		m.epSubset[subsetKey] = ss
+		m.epNameSet[ss.Name] = true
 	}
 	ss.KeyEndpointMap[ep.Key] = ep
+}
+
+func NewEndpointSubsetMapFromList(l *v1.EndpointsList) *EndpointSubsetMap {
+	m := NewEndpointSubsetMap()
+	for _, vep := range l.Items {
+		ns := vep.Namespace
+		if ns == "" {
+			ns = v1.NamespaceDefault
+		}
+		pl := map[string]string{}
+		svc := ""
+		zone := ""
+		port := ""
+		for k, v := range vep.Labels {
+			switch {
+			case k == MeshEndpointAnnotation:
+				continue
+			case k == LabelService:
+				svc = v
+				continue
+			case k == LabelZone:
+				zone = v
+				continue
+			}
+			pl[k] = v
+		}
+		eptPort := v1.ContainerPort{}
+		templ := NewEndpoint(ns, svc, zone, "", eptPort, pl)
+		for _, vs := range vep.Subsets {
+			for _, ip := range vs.Addresses {
+				ept := templ.DeepCopy()
+				ept.PodIP = ip.IP
+				if len(vs.Ports) > 0 {
+					eptPort.ContainerPort = vs.Ports[0].Port
+					eptPort.Name = port
+					eptPort.Protocol = vs.Ports[0].Protocol
+					ept.SetPort(eptPort)
+				}
+				ept.ComputeKeyForSortedLabels()
+				subsetKey := ept.BuildSubsetKey()
+				ss, ssFound := m.epSubset[subsetKey]
+				if !ssFound {
+					ss = *NewEndpointSubset(subsetKey, ept.Namespace, svc, zone, ept.PodLabels)
+					ss.Name = vep.Name
+					m.epSubset[subsetKey] = ss
+				}
+				ss.KeyEndpointMap[ept.Key] = ept
+			}
+		}
+	}
+	return m
+}
+
+func (eps *EndpointSubset) ToK8sEndpoints() v1.Endpoints {
+	vep := v1.Endpoints{}
+	vep.SetName(eps.Name)
+	vep.SetNamespace(eps.Namespace)
+	vep.Subsets = []v1.EndpointSubset{}
+	vepLabels := map[string]string{MeshEndpointAnnotation: "true", LabelService: eps.Service, LabelZone: eps.Zone}
+	portLabelSet := false
+	vepss := v1.EndpointSubset{}
+	vepss.Ports = []v1.EndpointPort{}
+	vepss.Addresses = []v1.EndpointAddress{}
+	for _, ep := range eps.KeyEndpointMap {
+		if !portLabelSet {
+			vepLabels[LabelPort] = ep.SrvPort
+			vep.SetLabels(vepLabels)
+			vepPort := v1.EndpointPort{}
+			vepPort.Name = ep.SrvPort
+			vepPort.Port = ep.Port.ContainerPort
+			vepPort.Protocol = ep.Port.Protocol
+			vepss.Ports = append(vepss.Ports, vepPort)
+			portLabelSet = true
+		}
+		vepss.Addresses = append(vepss.Addresses, v1.EndpointAddress{ep.PodIP, "", nil, nil})
+	}
+	vep.Subsets = append(vep.Subsets, vepss)
+	return vep
 }
