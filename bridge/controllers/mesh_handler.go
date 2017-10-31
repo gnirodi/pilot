@@ -11,12 +11,16 @@ import (
 type MeshHandler struct {
 	primaryMesh *crv1.Mesh
 	meshMap     map[string]*crv1.Mesh
+	mSsetter    MeshSetter
 	mu          sync.RWMutex
-	configDirty bool
 }
 
-func NewMeshHandler() *MeshHandler {
-	mh := MeshHandler{nil, map[string]*crv1.Mesh{}, sync.RWMutex{}, false}
+type MeshSetter interface {
+	UpdateMesh(meshCrd *crv1.Mesh)
+}
+
+func NewMeshHandler(mshSetter MeshSetter) *MeshHandler {
+	mh := MeshHandler{nil, map[string]*crv1.Mesh{}, mshSetter, sync.RWMutex{}}
 	return &mh
 }
 
@@ -31,7 +35,7 @@ func (p *MeshHandler) GetObjectType() runtime.Object {
 
 func (p *MeshHandler) InitMesh(mesh *crv1.Mesh) {
 	p.primaryMesh = mesh
-	p.configDirty = true
+	p.mSsetter.UpdateMesh(mesh)
 }
 
 func (p *MeshHandler) Handle(key string, obj interface{}) {
@@ -41,22 +45,23 @@ func (p *MeshHandler) Handle(key string, obj interface{}) {
 		glog.Infof("Mesh %s does not exist anymore\n", key)
 		delete(p.meshMap, key)
 		if len(p.meshMap) == 0 {
-			p.primaryMesh = nil
-			p.configDirty = true
+			p.InitMesh(nil)
 		}
 	} else {
 		mesh := obj.(*crv1.Mesh)
-		glog.Infof("Sync/Add/Update for Mesh '%s'\n", mesh.GetName(), mesh.GetNamespace())
-		if p.primaryMesh != nil {
+		glog.Infof("Sync/Add/Update for Mesh '%s'\n", mesh.GetName())
+		switch {
+		case p.primaryMesh != nil:
 			if p.primaryMesh.Name != mesh.GetName() {
 				glog.Errorf("An environment can only have a single mesh. Primary mesh '%s' is still active. Mesh '%s' ignored\n",
 					p.primaryMesh.Name, mesh.GetName())
 			} else {
 				p.InitMesh(mesh)
 			}
-		}
-		if len(p.meshMap) == 0 {
+			break
+		case len(p.meshMap) == 0:
 			p.InitMesh(mesh)
+			break
 		}
 		p.meshMap[key] = mesh
 	}

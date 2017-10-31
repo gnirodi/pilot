@@ -12,10 +12,10 @@ type PodUpdator interface {
 }
 
 type PodHandler struct {
-	podUpdator *PodUpdator
+	podUpdator PodUpdator
 }
 
-func NewPodHandler(podUpdator *PodUpdator) *PodHandler {
+func NewPodHandler(podUpdator PodUpdator) ControllerHandler {
 	podHandler := PodHandler{podUpdator}
 	return &podHandler
 }
@@ -31,10 +31,10 @@ func (p *PodHandler) GetObjectType() runtime.Object {
 func (p *PodHandler) Handle(key string, obj interface{}) {
 	if obj == nil {
 		fmt.Printf("Pod %s does not exist anymore\n", key)
-		(*p.podUpdator).UpdatePod(key, nil)
+		p.podUpdator.UpdatePod(key, nil)
 	} else {
 		pod := obj.(*v1.Pod)
 		fmt.Printf("Sync/Add/Update for Pod '%s' from Pod IP '%s' Namespace '%s'\n", pod.GetName(), pod.Status.PodIP, pod.GetNamespace())
-		(*p.podUpdator).UpdatePod(key, pod)
+		p.podUpdator.UpdatePod(key, pod)
 	}
 }

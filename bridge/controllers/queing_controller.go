@@ -26,10 +26,10 @@ type Controller struct {
 	indexer  cache.Indexer
 	queue    workqueue.RateLimitingInterface
 	informer cache.Controller
-	handler  *ControllerHandler
+	handler  ControllerHandler
 }
 
-func NewController(queue workqueue.RateLimitingInterface, indexer cache.Indexer, informer cache.Controller, handler *ControllerHandler) *Controller {
+func NewController(queue workqueue.RateLimitingInterface, indexer cache.Indexer, informer cache.Controller, handler ControllerHandler) *Controller {
 	return &Controller{
 		informer: informer,
 		indexer:  indexer,
@@ -66,9 +66,9 @@ func (c *Controller) handle(key string) error {
 		return err
 	}
 	if !exists {
-		(*c.handler).Handle(key, nil)
+		c.handler.Handle(key, nil)
 	} else {
-		(*c.handler).Handle(key, obj)
+		c.handler.Handle(key, obj)
 	}
 	return nil
 }
@@ -85,7 +85,7 @@ func (c *Controller) handleErr(err error, key interface{}) {
 
 	// This controller retries 5 times if something goes wrong. After that, it stops trying.
 	if c.queue.NumRequeues(key) < 5 {
-		glog.Infof("Error syncing %s %v: %v", (*c.handler).GetTypeNamePlural(), key, err)
+		glog.Infof("Error syncing %s %v: %v", c.handler.GetTypeNamePlural(), key, err)
 
 		// Re-enqueue the key rate limited. Based on the rate limiter on the
 		// queue and the re-enqueue history, the key will be processed later again.
@@ -96,7 +96,7 @@ func (c *Controller) handleErr(err error, key interface{}) {
 	c.queue.Forget(key)
 	// Report to an external entity that, even after several retries, we could not successfully process this key
 	utilruntime.HandleError(err)
-	glog.Infof("Dropping %s %q out of the queue: %v", (*c.handler).GetTypeNamePlural(), key, err)
+	glog.Infof("Dropping %s %q out of the queue: %v", c.handler.GetTypeNamePlural(), key, err)
 }
 
 func (c *Controller) Run(threadiness int, stopCh chan struct{}) {
@@ -104,7 +104,7 @@ func (c *Controller) Run(threadiness int, stopCh chan struct{}) {
 
 	// Let the workers stop when we are done
 	defer c.queue.ShutDown()
-	glog.Infof("Starting controller for %s.", (*c.handler).GetTypeNamePlural())
+	glog.Infof("Starting controller for %s.", c.handler.GetTypeNamePlural())
 
 	go c.informer.Run(stopCh)
 
@@ -119,7 +119,7 @@ func (c *Controller) Run(threadiness int, stopCh chan struct{}) {
 	}
 
 	<-stopCh
-	glog.Info("Stopping controller for %s.", (*c.handler).GetTypeNamePlural())
+	glog.Info("Stopping controller for %s.", c.handler.GetTypeNamePlural())
 }
 
 func (c *Controller) runWorker() {
@@ -127,15 +127,9 @@ func (c *Controller) runWorker() {
 	}
 }
 
-func CreateController(clientset *kubernetes.Clientset, handler interface{}) *Controller {
-
-	h, ok := handler.(ControllerHandler)
-	if !ok {
-		glog.Fatal("Incorrect handler interface. Expecting a ControllerHandler")
-	}
-
+func CreateController(clientset *kubernetes.Clientset, handler ControllerHandler) *Controller {
 	// create the object watcher
-	objListWatcher := cache.NewListWatchFromClient(clientset.CoreV1().RESTClient(), h.GetTypeNamePlural(), "", fields.Everything())
+	objListWatcher := cache.NewListWatchFromClient(clientset.CoreV1().RESTClient(), handler.GetTypeNamePlural(), "", fields.Everything())
 
 	// create the workqueue
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
@@ -144,7 +138,7 @@ func CreateController(clientset *kubernetes.Clientset, handler interface{}) *Con
 	// whenever the cache is updated, the objects key is added to the workqueue.
 	// Note that when we finally process the item from the workqueue, we might see a newer version
 	// of the Object than the version which was responsible for triggering the update.
-	indexer, informer := cache.NewIndexerInformer(objListWatcher, h.GetObjectType(), 0, cache.ResourceEventHandlerFuncs{
+	indexer, informer := cache.NewIndexerInformer(objListWatcher, handler.GetObjectType(), 0, cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			key, err := cache.MetaNamespaceKeyFunc(obj)
 			if err == nil {
@@ -167,20 +161,14 @@ func CreateController(clientset *kubernetes.Clientset, handler interface{}) *Con
 		},
 	}, cache.Indexers{})
 
-	controller := NewController(queue, indexer, informer, &h)
+	controller := NewController(queue, indexer, informer, handler)
 
 	return controller
 }
 
-func CreateCrdController(clientset *meshv1.Clientset, handler interface{}) *Controller {
-
-	h, ok := handler.(ControllerHandler)
-	if !ok {
-		glog.Fatal("Incorrect handler interface. Expecting a ControllerHandler")
-	}
-
+func CreateCrdController(clientset *meshv1.Clientset, handler ControllerHandler) *Controller {
 	// create the object watcher
-	objListWatcher := cache.NewListWatchFromClient(clientset.PkgV1().RESTClient(), h.GetTypeNamePlural(), "", fields.Everything())
+	objListWatcher := cache.NewListWatchFromClient(clientset.PkgV1().RESTClient(), handler.GetTypeNamePlural(), "", fields.Everything())
 
 	// create the workqueue
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
@@ -189,7 +177,7 @@ func CreateCrdController(clientset *meshv1.Clientset, handler interface{}) *Cont
 	// whenever the cache is updated, the objects key is added to the workqueue.
 	// Note that when we finally process the item from the workqueue, we might see a newer version
 	// of the Object than the version which was responsible for triggering the update.
-	indexer, informer := cache.NewIndexerInformer(objListWatcher, h.GetObjectType(), 0, cache.ResourceEventHandlerFuncs{
+	indexer, informer := cache.NewIndexerInformer(objListWatcher, handler.GetObjectType(), 0, cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			key, err := cache.MetaNamespaceKeyFunc(obj)
 			if err == nil {
@@ -212,7 +200,7 @@ func CreateCrdController(clientset *meshv1.Clientset, handler interface{}) *Cont
 		},
 	}, cache.Indexers{})
 
-	controller := NewController(queue, indexer, informer, &h)
+	controller := NewController(queue, indexer, informer, handler)
 
 	return controller
 }

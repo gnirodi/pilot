@@ -37,6 +37,10 @@ type NamespacePods struct {
 	labelMap  LabelMap
 }
 
+func NewNamespacePods(ns string) *NamespacePods {
+	return &NamespacePods{ns, KeyPodMap{}, LabelMap{}}
+}
+
 // Map from namespace to NamespacePods
 type NamespacePodsMap map[string]NamespacePods
 
@@ -95,7 +99,7 @@ func (l *PodList) UpdatePod(key string, pod *v1.Pod) {
 		}
 		nsPods, nsFound := l.namespacePodsMap[ns]
 		if !nsFound {
-			nsPods = NamespacePods{}
+			nsPods = *NewNamespacePods(ns)
 			l.namespacePodsMap[ns] = nsPods
 		}
 		// Setup label references, but first delete references for an existing object
@@ -122,7 +126,7 @@ func (l *PodList) UpdatePod(key string, pod *v1.Pod) {
 		}
 
 		// Creat Mesh pod representation
-		mshpd := Pod{key, ns, map[string]string{}, make([]Endpoint, len(podPorts))}
+		mshpd := Pod{key, ns, map[string]string{}, []Endpoint{}}
 
 		// Index pod label and values
 		for k, v := range pod.Labels {
@@ -144,7 +148,8 @@ func (l *PodList) UpdatePod(key string, pod *v1.Pod) {
 		epTemplate := NewEndpoint(ns, "", pod.Status.PodIP, v1.ContainerPort{}, mshpd.Labels)
 		for _, port := range podPorts {
 			mshpdEpTemplate := epTemplate.DeepCopy()
-			mshpdEpTemplate.Port = port
+			mshpdEpTemplate.SetPort(port)
+			mshpdEpTemplate.ComputeKeyForSortedLabels()
 			mshpd.EpTemplates = append(mshpd.EpTemplates, mshpdEpTemplate)
 		}
 
@@ -167,9 +172,10 @@ func (l *PodList) UpdatePod(key string, pod *v1.Pod) {
 	}
 }
 
-func (l *PodList) GetExpectedEndpointSubsets(localZoneName string, keySvcMap *map[string]Service) (esm EndpointSubsetMap) {
+func (l *PodList) GetExpectedEndpointSubsets(localZoneName string, keySvcMap *map[string]Service) EndpointSubsetMap {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
+	esm := NewEndpointSubsetMap()
 	for _, svc := range *keySvcMap {
 		if svc.SvcType != MeshService {
 			continue
@@ -240,5 +246,5 @@ func (l *PodList) GetExpectedEndpointSubsets(localZoneName string, keySvcMap *ma
 			}
 		}
 	}
-	return
+	return *esm
 }

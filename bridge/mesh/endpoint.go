@@ -1,14 +1,13 @@
 package mesh
 
 import (
-	"bytes"
-	"compress/zlib"
-	"encoding/hex"
-	"sort"
-	"strconv"
-	"strings"
-	// "github.com/golang/glog"
+	"crypto/rand"
+	"crypto/sha256"
+	"fmt"
+	"github.com/golang/glog"
 	"k8s.io/api/core/v1"
+	"sort"
+	"strings"
 )
 
 const (
@@ -37,7 +36,9 @@ type ZoneKeyEndpointMap map[string]KeyEndpointMap
 // A mesh EndpointSubset is a unique collection of mesh Endpoints for the tuples of service SrvPort zone and other labels
 // It corresponds to exactly one v1.Endpoint which will typically have only one subset
 type EndpointSubset struct {
-	Key            string
+	// The human readable key for the subset
+	Key string
+	// The k8s endpoint object name unique for the zone
 	Name           string
 	Namespace      string
 	Service        string
@@ -47,16 +48,21 @@ type EndpointSubset struct {
 }
 
 // Maps an uncompresssed EndpointSubset name to the corresponding Endpoint subset
-type EndpointSubsetMap map[string]EndpointSubset
+type EndpointSubsetMap struct {
+	epSubset  map[string]EndpointSubset
+	epNameSet map[string]bool
+}
+
+func NewEndpointSubsetMap() *EndpointSubsetMap {
+	return &EndpointSubsetMap{map[string]EndpointSubset{}, map[string]bool{}}
+}
 
 func NewEndpoint(ns, svc, ip string, port v1.ContainerPort, pl map[string]string) *Endpoint {
 	ep := Endpoint{"", ns, svc, ip, "", port, "", map[string]string{}}
-	lblIdx := 0
 	sortedLabelNames := []string{}
 	for k, v := range pl {
-		sortedLabelNames[lblIdx] = k
+		sortedLabelNames = append(sortedLabelNames, k)
 		ep.PodLabels[k] = v
-		lblIdx++
 	}
 	sort.Strings(sortedLabelNames)
 	kvp := []string{}
@@ -65,13 +71,16 @@ func NewEndpoint(ns, svc, ip string, port v1.ContainerPort, pl map[string]string
 		kvp = append(kvp, strings.Join([]string{k, v}, "="))
 	}
 	ep.KeyLabelSuffix = strings.Join(kvp, KeySeparator)
-	ep.SrvPort = port.Name
-	portNum := strconv.FormatInt(int64(port.HostPort), 64)
-	if ep.SrvPort == "" {
-		ep.SrvPort = portNum
-	}
+	ep.SetPort(port)
 	ep.ComputeKeyForSortedLabels()
 	return &ep
+}
+
+func (ep *Endpoint) SetPort(port v1.ContainerPort) {
+	ep.SrvPort = port.Name
+	if ep.SrvPort == "" {
+		ep.SrvPort = fmt.Sprintf("%d", port.ContainerPort)
+	}
 }
 
 func (ep *Endpoint) ComputeKeyForSortedLabels() {
@@ -94,26 +103,35 @@ func NewEndpointSubset(key, ns, svc, zone string, lbls map[string]string) *Endpo
 	ss.Zone = zone
 	ss.Labels = lbls
 	ss.KeyEndpointMap = KeyEndpointMap{}
-	ss.ComputeName()
 	return &ss
 }
 
 func (es *EndpointSubset) ComputeName() {
-	var b bytes.Buffer
-	w := zlib.NewWriter(&b)
-	defer w.Close()
-	w.Write([]byte(es.Key))
-	es.Name = hex.EncodeToString(b.Bytes())
+	es.Name = fmt.Sprintf("%x", sha256.Sum256([]byte(es.Key)))
+	glog.Infof("Compressed bytes from %d to %d", len(es.Key), len(es.Name))
+}
+
+func (m *EndpointSubsetMap) EnsureUniqueName(eps *EndpointSubset) {
+	eps.ComputeName()
+	for _, found := m.epNameSet[eps.Name]; found; {
+		b := make([]byte, 1)
+		_, err := rand.Read(b)
+		if err == nil {
+			eps.Name = eps.Name + fmt.Sprintf("%x", b)
+		}
+	}
 }
 
 func (m *EndpointSubsetMap) AddEndpoint(t *Endpoint, s string, z string) {
 	ep := t.DeepCopy()
 	ep.Service = s
 	ep.ComputeKeyForSortedLabels()
-	subsetName := strings.Join([]string{ep.Service, ep.Namespace, z, ep.SrvPort, ep.KeyLabelSuffix}, KeySeparator)
-	ss, ssFound := (*m)[subsetName]
+	subsetKey := strings.Join([]string{ep.Service, ep.Namespace, z, ep.SrvPort, ep.KeyLabelSuffix}, KeySeparator)
+	ss, ssFound := m.epSubset[subsetKey]
 	if !ssFound {
-		ss = *NewEndpointSubset(subsetName, ep.Namespace, s, z, ep.PodLabels)
+		ss = *NewEndpointSubset(subsetKey, ep.Namespace, s, z, ep.PodLabels)
+		m.EnsureUniqueName(&ss)
+		m.epSubset[subsetKey] = ss
 	}
 	ss.KeyEndpointMap[ep.Key] = ep
 }

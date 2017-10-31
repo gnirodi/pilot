@@ -3,6 +3,7 @@ package mesh
 import (
 	"encoding/json"
 	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/golang/glog"
@@ -12,10 +13,11 @@ import (
 type MeshServiceType int
 
 const (
-	MeshSvcAnnotation = "config.istio.io/mesh.deployment-selector"
-	UnknownZone       = MeshServiceType(0)
-	MeshService       = MeshServiceType(1)
-	NonMeshService    = MeshServiceType(2)
+	MeshSvcAnnotation   = "config.istio.io/mesh.deployment-selector"
+	MeshAgentAnnotation = "config.istio.io/mesh.agent"
+	UnknownZone         = MeshServiceType(0)
+	MeshService         = MeshServiceType(1)
+	NonMeshService      = MeshServiceType(2)
 )
 
 type Service struct {
@@ -24,30 +26,27 @@ type Service struct {
 	Namespace string
 	SvcType   MeshServiceType
 	Labels    map[string]string
+	agentVip  string
 }
 
 type ServiceList struct {
 	nsIgnoreRegex *regexp.Regexp
 	serviceMap    map[string]Service
+	agentVips     map[string]bool
+	ssGetter      PodEndpointSubsetGetter
 	mu            sync.RWMutex
-	ssGetter      *PodEndpointSubsetGetter
 }
 
 type PodEndpointSubsetGetter interface {
 	GetExpectedEndpointSubsets(localZoneName string, keySvcMap *map[string]Service) EndpointSubsetMap
 }
 
-func NewServiceList(nsIgnoreRegex string, ssGetter interface{}) *ServiceList {
+func NewServiceList(nsIgnoreRegex string, ssGetter PodEndpointSubsetGetter) *ServiceList {
 	regex, err := regexp.Compile(nsIgnoreRegex)
 	if err != nil {
 		glog.Fatal("Error compiling Namespace exclude regex")
 	}
-	getter, ok := ssGetter.(*PodEndpointSubsetGetter)
-	if !ok {
-		glog.Fatal("Incorrect ssGetter interface. Expecting a PodEndpointSubsetGetter")
-	}
-
-	return &ServiceList{regex, map[string]Service{}, sync.RWMutex{}, getter}
+	return &ServiceList{regex, map[string]Service{}, map[string]bool{}, ssGetter, sync.RWMutex{}}
 }
 
 func (l *ServiceList) UpdateService(key string, svc *v1.Service) {
@@ -65,7 +64,7 @@ func (l *ServiceList) UpdateService(key string, svc *v1.Service) {
 		meshAnnot, maFound := svc.Annotations[MeshSvcAnnotation]
 		maLabels := map[string]string{}
 		if maFound {
-			var mf interface{}
+			mf := make(map[string]interface{})
 			b := []byte{}
 			b = append(b, meshAnnot...)
 			err := json.Unmarshal(b, &mf)
@@ -74,7 +73,16 @@ func (l *ServiceList) UpdateService(key string, svc *v1.Service) {
 					svc.Name, ns, MeshSvcAnnotation, meshAnnot, err.Error())
 				maFound = false
 			}
-			maLabels = mf.(map[string]string)
+			for k, v := range mf {
+				val, ok := v.(string)
+				if !ok {
+					glog.Errorf("Service named '%s' from namespace '%s' has malformed annotion '%s=%s' Ignoring service update. %s",
+						svc.Name, ns, MeshSvcAnnotation, meshAnnot, err.Error())
+					maFound = false
+					break
+				}
+				maLabels[k] = val
+			}
 		}
 
 		svLabels := svc.GetLabels()
@@ -113,11 +121,26 @@ func (l *ServiceList) UpdateService(key string, svc *v1.Service) {
 			} else {
 				svcType = NonMeshService
 			}
+			break
 		}
-		ms := Service{key, svc.Name, svc.Namespace, svcType, maLabels}
+		msaAnnot, msaAnnotFound := svc.Annotations[MeshAgentAnnotation]
+		msaVip := ""
+		if msaAnnotFound && strings.ToLower(msaAnnot) == "true" {
+			msaVip = svc.Spec.ClusterIP
+			if len(msaVip) > 0 {
+				l.agentVips[msaVip] = true
+			}
+		}
+		ms := Service{key, svc.Name, svc.Namespace, svcType, maLabels, msaVip}
 		l.serviceMap[key] = ms
 	} else {
 		// Deletion event
+		svc, svcFound := l.serviceMap[key]
+		if svcFound {
+			if len(svc.agentVip) > 0 {
+				delete(l.agentVips, svc.agentVip)
+			}
+		}
 		delete(l.serviceMap, key)
 	}
 }
@@ -125,5 +148,11 @@ func (l *ServiceList) UpdateService(key string, svc *v1.Service) {
 func (l *ServiceList) GetExpectedEndpointSubsets(localZoneName string) EndpointSubsetMap {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	return (*l.ssGetter).GetExpectedEndpointSubsets(localZoneName, &l.serviceMap)
+	return l.ssGetter.GetExpectedEndpointSubsets(localZoneName, &l.serviceMap)
+}
+
+func (l *ServiceList) GetAgentVips() map[string]bool {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.agentVips
 }

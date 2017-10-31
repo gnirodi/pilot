@@ -8,7 +8,7 @@ metadata:
   # Annotations for Istio Mesh
   annotations:
     config.istio.io/mesh.deployment-selector: |
-      {"app":"istio-demo-app-server","version":"1.2"}
+      {"app":"istio-demo-app-server"}
 spec:
   # Service is HEADLESS
   clusterIP: None

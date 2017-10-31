@@ -12,10 +12,10 @@ type ServiceUpdator interface {
 }
 
 type ServiceHandler struct {
-	svcUpdator *ServiceUpdator
+	svcUpdator ServiceUpdator
 }
 
-func NewServiceHandler(svcUpdator *ServiceUpdator) *ServiceHandler {
+func NewServiceHandler(svcUpdator ServiceUpdator) *ServiceHandler {
 	svcHandler := ServiceHandler{svcUpdator}
 	return &svcHandler
 }
@@ -31,10 +31,10 @@ func (p *ServiceHandler) GetObjectType() runtime.Object {
 func (p *ServiceHandler) Handle(key string, obj interface{}) {
 	if obj == nil {
 		fmt.Printf("Service %s does not exist anymore\n", key)
-		(*p.svcUpdator).UpdateService(key, nil)
+		p.svcUpdator.UpdateService(key, nil)
 	} else {
 		svc := obj.(*v1.Service)
 		fmt.Printf("Sync/Add/Update for Service '%s' Namespace '%s'\n", svc.GetName(), svc.GetNamespace())
-		(*p.svcUpdator).UpdateService(key, svc)
+		p.svcUpdator.UpdateService(key, svc)
 	}
 }

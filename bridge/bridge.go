@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 
 	meshv1 "istio.io/pilot/bridge/clientset/v1"
 	"istio.io/pilot/bridge/controllers"
@@ -35,19 +36,73 @@ var httpPort = flag.String("http_port", "8080", "Port for serving http traffic")
 var nsIgnoreRegex = flag.String("namespace_ignore_list", "kube-system", "Regex of namespaces that need to be ignored by this agent")
 
 type StatuszInfo struct {
-	ProcInfo              *map[string]string
+	ProcInfo              *ProcessInfo
 	TargetUrl             *string
 	TargetHealthzResponse *string
 }
 
-func buildStatus(m *map[string]string, statusHeader string) {
-	(*m)[StatusHeader] = statusHeader
-	(*m)[EnvVarNodeName] = os.Getenv(EnvVarNodeName)
-	(*m)[EnvVarPodName] = os.Getenv(EnvVarPodName)
-	(*m)[EnvVarPodNamespace] = os.Getenv(EnvVarPodNamespace)
-	(*m)[EnvVarPodIP] = os.Getenv(EnvVarPodIP)
-	(*m)[EnvVarPodServiceAccount] = os.Getenv(EnvVarPodServiceAccount)
-	(*m)[ServerStatus] = "OK"
+type ProcessInfo struct {
+	labels map[string]string
+	mu     sync.RWMutex
+}
+
+func NewProcessInfo() *ProcessInfo {
+	pi := ProcessInfo{map[string]string{}, sync.RWMutex{}}
+	return &pi
+}
+
+func buildStatus(m *ProcessInfo, statusHeader string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.labels[StatusHeader] = statusHeader
+	m.labels[EnvVarNodeName] = os.Getenv(EnvVarNodeName)
+	m.labels[EnvVarPodName] = os.Getenv(EnvVarPodName)
+	m.labels[EnvVarPodNamespace] = os.Getenv(EnvVarPodNamespace)
+	m.labels[EnvVarPodIP] = os.Getenv(EnvVarPodIP)
+	m.labels[EnvVarPodServiceAccount] = os.Getenv(EnvVarPodServiceAccount)
+	m.labels[ServerStatus] = "Initializing"
+}
+
+func (m ProcessInfo) SetHealth(newStatus string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.labels[ServerStatus] = newStatus
+}
+
+func (m ProcessInfo) GetStatusHeader() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.labels[StatusHeader]
+}
+
+func (m ProcessInfo) GetNodeName() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.labels[EnvVarNodeName]
+}
+
+func (m ProcessInfo) GetPodName() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.labels[EnvVarPodName]
+}
+
+func (m ProcessInfo) GetPodNamespace() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.labels[EnvVarPodNamespace]
+}
+
+func (m ProcessInfo) GetPodIP() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.labels[EnvVarPodIP]
+}
+
+func (m ProcessInfo) GetServerStatus() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.labels[ServerStatus]
 }
 
 func main() {
@@ -57,9 +112,9 @@ func main() {
 		fmt.Printf("--%-15.15s:%s\n", f.Name, f.Value.String())
 	})
 
-	pi := make(map[string]string)
-	buildStatus(&pi, ServerStatusHeader)
-	si := StatuszInfo{&pi, nil, nil}
+	pi := NewProcessInfo()
+	buildStatus(pi, ServerStatusHeader)
+	si := StatuszInfo{pi, nil, nil}
 
 	// Handle all templates
 	pattern := filepath.Join(*templateDir, "*")
@@ -123,29 +178,36 @@ func main() {
 			panic(err.Error())
 		}
 	}
-	// create the clientset from the config
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	mshClientset, err := meshv1.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
 
 	pl := mesh.NewPodList(*nsIgnoreRegex)
 	sl := mesh.NewServiceList(*nsIgnoreRegex, pl)
-	agent := mesh.NewMeshSyncAgent(sl)
 
-	podHandler := controllers.PodHandler{}
-	podController := controllers.CreateController(clientset, podHandler)
+	agentClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
+	agent := mesh.NewMeshSyncAgent(agentClient, sl, pi)
+	podHandler := controllers.NewPodHandler(pl)
 
-	svcHandler := controllers.ServiceHandler{}
-	svcController := controllers.CreateController(clientset, svcHandler)
+	podClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
+	podController := controllers.CreateController(podClient, podHandler)
 
-	mshHandler := controllers.MeshHandler{}
-	mshController := controllers.CreateCrdController(mshClientset, mshHandler)
+	svcHandler := controllers.NewServiceHandler(sl)
+	svcClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
+	svcController := controllers.CreateController(svcClient, svcHandler)
+
+	mshHandler := controllers.NewMeshHandler(agent)
+	mshClient, err := meshv1.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
+	mshController := controllers.CreateCrdController(mshClient, mshHandler)
 
 	// Now let's start the controllers
 	stop := make(chan struct{})
@@ -154,8 +216,7 @@ func main() {
 	go podController.Run(1, stop)
 	go svcController.Run(1, stop)
 	go mshController.Run(1, stop)
-
-	agent.Run()
+	agent.Run(stop)
 
 	// Wait forever
 	select {}

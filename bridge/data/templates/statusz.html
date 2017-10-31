@@ -1,17 +1,17 @@
 <!DOCTYPE html>
 <html>
 <head> 
-  <title>{{ index .ProcInfo "STATUS_HEADER" }} {{ index .ProcInfo "MY_NODE_NAME" }} </title>
+  <title>{{ .ProcInfo.GetStatusHeader }} {{ .ProcInfo.GetNodeName }} </title>
   <link rel="stylesheet" type="text/css" href="/statusz.css" />
 </head>
 <body>
-<h1>{{ index .ProcInfo "STATUS_HEADER" }}</h1>
+<h1>{{ .ProcInfo.GetStatusHeader }}</h1>
 <div class="sts">
-  <div class="snm">Node Name</div> <div class="svl">{{ index .ProcInfo "MY_NODE_NAME" }}</div>
-  <div class="snm">Pod Namespace</div> <div class="svl">{{ index .ProcInfo "MY_POD_NAMESPACE" }}</div>
-  <div class="snm">Pod Name</div> <div class="svl">{{ index .ProcInfo "MY_POD_NAME" }}</div>
-  <div class="snm">Pod IP</div> <div class="svl">{{ index .ProcInfo "MY_POD_IP" }}</div>
-  <div class="snm">Status</div> <div class="svl-ok">{{ index .ProcInfo "MY_SERVER_STATUS" }}</div>
+  <div class="snm">Node Name</div> <div class="svl">{{ .ProcInfo.GetNodeName }}</div>
+  <div class="snm">Pod Namespace</div> <div class="svl">{{ .ProcInfo.GetPodNamespace }}</div>
+  <div class="snm">Pod Name</div> <div class="svl">{{ .ProcInfo.GetPodName }}</div>
+  <div class="snm">Pod IP</div> <div class="svl">{{ .ProcInfo.GetPodIP }}</div>
+  <div class="snm">Status</div> <div class="svl-ok">{{ .ProcInfo.GetServerStatus }}</div>
 </div>
 <hr>
 

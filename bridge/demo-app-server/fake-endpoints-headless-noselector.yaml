@@ -3,6 +3,8 @@ kind: Endpoints
 apiVersion: v1
 metadata:
   name: demo-app-service
+  labels:
+    config.istio.io/mesh.endpoint: "true"
 subsets:
   - addresses:
       - ip: 10.16.2.18
