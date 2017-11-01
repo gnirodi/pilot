@@ -1,6 +1,8 @@
 package mesh
 
 import (
+	"encoding/json"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -13,7 +15,7 @@ import (
 )
 
 const (
-	MeshEndpointAnnotation = "config.istio.io/mesh.endpoint"
+	LabelMeshEndpoint = "config.istio.io/mesh.endpoint"
 )
 
 type MeshSyncAgent struct {
@@ -21,8 +23,11 @@ type MeshSyncAgent struct {
 	healthSetter HealthSetter
 	meshCrd      *crv1.Mesh
 	agentVips    map[string]bool
-	LocalZone    string
+	localZone    string
 	clientset    *kubernetes.Clientset
+	exportedEp   *EndpointSubsetMap
+	importedEp   map[string]*EndpointSubsetMap
+	zonePollers  ExternalZonePollers
 	mu           sync.RWMutex
 }
 
@@ -36,7 +41,7 @@ type ServiceEndpointSubsetGetter interface {
 }
 
 func NewMeshSyncAgent(clientset *kubernetes.Clientset, ssGetter ServiceEndpointSubsetGetter, healthSetter HealthSetter) *MeshSyncAgent {
-	return &MeshSyncAgent{ssGetter, healthSetter, nil, map[string]bool{}, "", clientset, sync.RWMutex{}}
+	return &MeshSyncAgent{ssGetter, healthSetter, nil, map[string]bool{}, "", clientset, nil, map[string]*EndpointSubsetMap{}, ExternalZonePollers{}, sync.RWMutex{}}
 }
 
 func (a *MeshSyncAgent) GetMeshSpec() crv1.MeshSpec {
@@ -48,37 +53,63 @@ func (a *MeshSyncAgent) GetMeshSpec() crv1.MeshSpec {
 	return crv1.MeshSpec{}
 }
 
-func (a *MeshSyncAgent) GetStatus() bool {
+func (a *MeshSyncAgent) GetExportedEndpoints() []byte {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	emptyReturn := []byte("{}")
+	if a.exportedEp == nil {
+		return emptyReturn
+	}
+	b, err := json.Marshal(a.exportedEp.epSubset)
+	if err != nil {
+		glog.Warningf("Unable to export endpoints %v", err)
+		return emptyReturn
+	}
+	return b
+}
+
+func (a *MeshSyncAgent) ExportLocalEndpointSubsets(m EndpointSubsetMap) {
+	// Make a local copy, cause reconcile will change m
+	exported := NewEndpointSubsetMap()
+	for k, ss := range m.epSubset {
+		exported.epSubset[k] = ss
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.exportedEp = exported
+}
+
+func (a *MeshSyncAgent) GetMeshStatus() (crv1.MeshSpec, bool) {
 	a.agentVips = a.ssGetter.GetAgentVips()
 	ms := a.GetMeshSpec()
 	tmpZone := ""
 	for _, z := range ms.Zones {
-		vipParts := strings.Split(z.MeshSyncAgentVip, ":")
-		if len(vipParts) > 0 {
-			prefix := vipParts[0]
-			_, vipFound := a.agentVips[prefix]
-			if vipFound {
-				tmpZone = z.ZoneName
-				break
-			}
-		} else {
+		host, _, err := net.SplitHostPort(z.MeshSyncAgentVip)
+		if err != nil {
+			glog.Error("Zone '%s' is misconfigured. Illegal host port spec '%s' error: %v", z.ZoneName, z.MeshSyncAgentVip, err)
+			continue
+		}
+		_, vipFound := a.agentVips[host]
+		if vipFound {
+			tmpZone = z.ZoneName
 			continue
 		}
 	}
-	if len(tmpZone) == 0 {
+	if tmpZone == "" {
 		glog.Warningf("Local MSA service VIP not found in Mesh Config.\nLocal VIP list: %v\nMesh Config:%v", a.agentVips, ms.Zones)
-		a.LocalZone = ""
+		a.localZone = ""
 		a.healthSetter.SetHealth("Inactive")
-		return false
+		return ms, false
 	}
-	a.LocalZone = tmpZone
+	a.localZone = tmpZone
 	a.healthSetter.SetHealth("Active")
-	return true
+	a.zonePollers.ReconcilePollers(ms, a.localZone)
+	return ms, true
 }
 
 func (a *MeshSyncAgent) GetActualEndpointSubsets() EndpointSubsetMap {
 	opts := v1.ListOptions{}
-	opts.LabelSelector = strings.Join([]string{MeshEndpointAnnotation, "true"}, "=")
+	opts.LabelSelector = strings.Join([]string{LabelMeshEndpoint, "true"}, "=")
 	m := NewEndpointSubsetMap()
 	l, err := a.clientset.CoreV1().Endpoints("").List(opts)
 	if err != nil {
@@ -90,80 +121,81 @@ func (a *MeshSyncAgent) GetActualEndpointSubsets() EndpointSubsetMap {
 }
 
 func (a *MeshSyncAgent) Reconcile(actual EndpointSubsetMap, expected EndpointSubsetMap) {
-	var smMap, lgMap *EndpointSubsetMap
-	inverted := false
-	if len(actual.epSubset) > len(expected.epSubset) {
-		smMap = &expected
-		lgMap = &actual
-	} else {
-		smMap = &actual
-		lgMap = &expected
-		inverted = true
+	var expectedLogInfo, actualLogInfo string
+	createSet := map[string]*EndpointSubset{}
+	updateSet := map[string]*EndpointSubset{}
+	deleteSet := map[string]*EndpointSubset{}
+	// Make a copy and delete matching keys on iteration
+	// Remaining are ones that need to be deleted
+	for k, v := range actual.epSubset {
+		if glog.V(2) {
+			if actualLogInfo == "" {
+				actualLogInfo = "\nActual Key Set:\n"
+			}
+			actualLogInfo = actualLogInfo + v.Name + " " + k + "\n"
+		}
+		deleteSet[k] = &v
 	}
-	notInLgMap := NewEndpointSubsetMap()
-	notSame := NewEndpointSubsetMap()
-	for key, epsSm := range smMap.epSubset {
-		epsLg, lgFound := lgMap.epSubset[key]
-		if !lgFound {
-			notInLgMap.epSubset[key] = epsSm
+	for key, epssExpected := range expected.epSubset {
+		if glog.V(2) {
+			if expectedLogInfo == "" {
+				expectedLogInfo = "\nExpected Key Set:\n"
+			}
+			expectedLogInfo = expectedLogInfo + epssExpected.Name + " " + key + "\n"
+		}
+		epssActual, actualFound := actual.epSubset[key]
+		if !actualFound {
+			createSet[key] = &epssExpected
 		} else {
-			epsNotSame := false
-			if len(epsSm.KeyEndpointMap) != len(epsLg.KeyEndpointMap) {
-				epsNotSame = true
+			epssNotSame := false
+			if len(epssExpected.KeyEndpointMap) != len(epssActual.KeyEndpointMap) {
+				epssNotSame = true
 			} else {
-				for _, epSm := range epsSm.KeyEndpointMap {
-					_, epLgFound := epsLg.KeyEndpointMap[epSm.Key]
-					if !epLgFound {
-						epsNotSame = true
+				for _, epExpected := range epssExpected.KeyEndpointMap {
+					_, epActualFound := epssActual.KeyEndpointMap[epExpected.Key]
+					if !epActualFound {
+						epssNotSame = true
 						break
 					}
 				}
 			}
-			if epsNotSame {
-				// Maintain Name i.e. hashes from actual rather than ones from expected
-				if !inverted {
-					epsSm.Name = epsLg.Name
-					notSame.epSubset[key] = epsSm
-				} else {
-					epsLg.Name = epsSm.Name
-					notSame.epSubset[key] = epsLg
-				}
+			if epssNotSame {
+				updateSet[key] = &epssExpected
 			}
-			delete(lgMap.epSubset, key)
+			delete(deleteSet, key)
 		}
 	}
-	// Remainder of lgMap is not in smMap
-	var createMap, delMap *EndpointSubsetMap
-	updMap := notSame
-	if !inverted {
-		createMap = notInLgMap
-		delMap = lgMap
-	} else {
-		createMap = lgMap
-		delMap = notInLgMap
-	}
+
+	glog.V(2).Info(expectedLogInfo, actualLogInfo, "\n")
+
 	// CRUD actual endpoints
 	// Start with delete map
-	for _, eps := range delMap.epSubset {
-		err := a.clientset.CoreV1().Endpoints(eps.Namespace).Delete(eps.Name, &v1.DeleteOptions{})
+	for _, epss := range deleteSet {
+		err := a.clientset.CoreV1().Endpoints(epss.Namespace).Delete(epss.Name, &v1.DeleteOptions{})
 		if err != nil {
-			glog.Warningf("Unable to delete mesh endpoint '%s'. Will try again.\n%v", eps.Name, err)
+			glog.Warningf("Unable to delete mesh endpoint. Will try again. Subset:\n%v\nError: %v\n", epss, err)
+		} else {
+			glog.V(2).Infof("Deleted mesh endpoint. Subset\n%v\n", epss)
 		}
 	}
 	// Then update
-	for _, eps := range updMap.epSubset {
-		vep := eps.ToK8sEndpoints()
-		_, err := a.clientset.CoreV1().Endpoints(eps.Namespace).Update(&vep)
+	for _, epss := range updateSet {
+		vep := epss.ToK8sEndpoints()
+		_, err := a.clientset.CoreV1().Endpoints(epss.Namespace).Update(&vep)
 		if err != nil {
-			glog.Warningf("Unable to update mesh endpoint '%v'. Will try again.\n%v", eps, err)
+			glog.Warningf("Unable to update mesh endpoint. Will try again. Subset:\n%vError: %v\n", epss, err)
+		} else {
+			glog.V(2).Infof("Updated mesh endpoint. Subset:\n%v\n", epss)
 		}
 	}
 	// Finall create
-	for _, eps := range createMap.epSubset {
-		vep := eps.ToK8sEndpoints()
-		_, err := a.clientset.CoreV1().Endpoints(eps.Namespace).Create(&vep)
+	for _, epss := range createSet {
+		vep := epss.ToK8sEndpoints()
+		_, err := a.clientset.CoreV1().Endpoints(epss.Namespace).Create(&vep)
 		if err != nil {
-			glog.Warningf("Unable to create mesh endpoint '%v'. Will try again.\n%v", eps, err)
+			glog.Warningf("Unable to create mesh endpoint '%v'. Will try again. Subset:\n%vError: %v\n", epss, err)
+		} else {
+			glog.V(2).Infof("Created mesh endpoint. Subset:\n%v\n", epss)
 		}
 	}
 }
@@ -177,16 +209,19 @@ func (a *MeshSyncAgent) UpdateMesh(meshCrd *crv1.Mesh) {
 func (a *MeshSyncAgent) Run(stopCh chan struct{}) {
 	glog.Info("Daemon initializing")
 	go wait.Until(a.runWorker, time.Second, stopCh)
+	<-stopCh
 }
 
 func (a *MeshSyncAgent) runWorker() {
 	// Get status of MSA
-	ok := a.GetStatus()
+	_, ok := a.GetMeshStatus()
 	if !ok {
 		return
 	}
 
 	actualMap := a.GetActualEndpointSubsets()
-	expectedMap := a.ssGetter.GetExpectedEndpointSubsets(a.LocalZone)
+	expectedMap := a.ssGetter.GetExpectedEndpointSubsets(a.localZone)
+	//	a.ExportLocalEndpointSubsets(expectedMap)
+	glog.Infof("\n\nPre reconciliation: Actual ss count: '%d', Expected ss count: '%d'", len(actualMap.epSubset), len(expectedMap.epSubset))
 	a.Reconcile(actualMap, expectedMap)
 }

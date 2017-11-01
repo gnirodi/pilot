@@ -1,0 +1,2 @@
+default$$demo-app-service$$gke_istio-hybrid_us-west1-c_hybrid-master$$http$$app=istio-demo-app-server$$pod-template-hash=3389813945
+default$$demo-app-service$$gke_istio-hybrid_us-west1-c_hybrid-master$$http$$app=istio-demo-app-server$$pod-template-hash=3389813945

@@ -150,14 +150,12 @@ func main() {
 	http.HandleFunc("/healthz.html", func(w http.ResponseWriter, r *http.Request) {
 		err := tmpl.ExecuteTemplate(w, "healthz.html", &pi)
 		if err != nil {
-			fmt.Printf("Error in statusz.css:\n%s", err.Error())
+			fmt.Printf("Error in healthz.html\n%s", err.Error())
 		}
 	})
 	http.HandleFunc("/statusz.css", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, filepath.Join(*templateDir, "/statusz.css"))
 	})
-
-	go http.ListenAndServe(":"+*httpPort, nil)
 
 	// Start syncing state
 	var kubeconfig *string
@@ -216,7 +214,15 @@ func main() {
 	go podController.Run(1, stop)
 	go svcController.Run(1, stop)
 	go mshController.Run(1, stop)
-	agent.Run(stop)
+	go agent.Run(stop)
+
+	http.HandleFunc("/mesh/v1/endpoints/", func(w http.ResponseWriter, r *http.Request) {
+		b := agent.GetExportedEndpoints()
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Write(b)
+	})
+
+	go http.ListenAndServe(":"+*httpPort, nil)
 
 	// Wait forever
 	select {}
