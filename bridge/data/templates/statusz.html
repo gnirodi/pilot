@@ -1,17 +1,17 @@
 <!DOCTYPE html>
 <html>
 <head> 
-  <title>{{ .ProcInfo.GetStatusHeader }} {{ .ProcInfo.GetNodeName }} </title>
+  <title>{{ .MeshInfo.GetStatusHeader }} {{ .MeshInfo.GetNodeName }} </title>
   <link rel="stylesheet" type="text/css" href="/statusz.css" />
 </head>
 <body>
-<h1>{{ .ProcInfo.GetStatusHeader }}</h1>
+<h1>{{ .MeshInfo.GetStatusHeader }}</h1>
 <div class="sts">
-  <div class="snm">Node Name</div> <div class="svl">{{ .ProcInfo.GetNodeName }}</div>
-  <div class="snm">Pod Namespace</div> <div class="svl">{{ .ProcInfo.GetPodNamespace }}</div>
-  <div class="snm">Pod Name</div> <div class="svl">{{ .ProcInfo.GetPodName }}</div>
-  <div class="snm">Pod IP</div> <div class="svl">{{ .ProcInfo.GetPodIP }}</div>
-  <div class="snm">Status</div> <div class="svl-ok">{{ .ProcInfo.GetServerStatus }}</div>
+  <div class="snm">Node Name</div> <div class="svl">{{ .MeshInfo.GetNodeName }}</div>
+  <div class="snm">Pod Namespace</div> <div class="svl">{{ .MeshInfo.GetPodNamespace }}</div>
+  <div class="snm">Pod Name</div> <div class="svl">{{ .MeshInfo.GetPodName }}</div>
+  <div class="snm">Pod IP</div> <div class="svl">{{ .MeshInfo.GetPodIP }}</div>
+  <div class="snm">Status</div> <div class="svl-ok">{{ .MeshInfo.GetServerStatus }}</div>
 </div>
 <hr>
 

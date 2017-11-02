@@ -64,7 +64,7 @@ func (a *MeshSyncAgent) ExportLocalEndpointSubsets(jsonMap []byte) {
 	a.exportedEp = jsonMap
 }
 
-func (a *MeshSyncAgent) GetMeshStatus() (crv1.MeshSpec, bool) {
+func (a *MeshSyncAgent) GetMeshStatus() bool {
 	a.agentVips = a.ssGetter.GetAgentVips()
 	ms := a.GetMeshSpec()
 	tmpZone := ""
@@ -84,12 +84,12 @@ func (a *MeshSyncAgent) GetMeshStatus() (crv1.MeshSpec, bool) {
 		glog.Warningf("Local MSA service VIP not found in Mesh Config.\nLocal VIP list: %v\nMesh Config:%v", a.agentVips, ms.Zones)
 		a.localZone = ""
 		a.healthSetter.SetHealth("Inactive")
-		return ms, false
+		return false
 	}
 	a.localZone = tmpZone
 	a.healthSetter.SetHealth("Active")
-	a.zonePollers.ReconcilePollers(ms, a.localZone)
-	return ms, true
+	a.zonePollers.Reconcile(ms, a.localZone)
+	return true
 }
 
 func (a *MeshSyncAgent) GetActualEndpointSubsets() EndpointSubsetMap {
@@ -199,11 +199,10 @@ func (a *MeshSyncAgent) Run(stopCh chan struct{}) {
 
 func (a *MeshSyncAgent) runWorker() {
 	// Get status of MSA
-	_, ok := a.GetMeshStatus()
+	ok := a.GetMeshStatus()
 	if !ok {
 		return
 	}
-
 	actualMap := a.GetActualEndpointSubsets()
 	a.ExportLocalEndpointSubsets(actualMap.ToJson()) // For what it's worth, this is what is available right now
 	expectedMap := a.ssGetter.GetExpectedEndpointSubsets(a.localZone)

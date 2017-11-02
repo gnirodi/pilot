@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sync"
 
 	meshv1 "istio.io/pilot/bridge/clientset/v1"
 	"istio.io/pilot/bridge/controllers"
@@ -20,89 +19,14 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 )
 
-const (
-	EnvVarNodeName          = "MY_NODE_NAME"
-	EnvVarPodName           = "MY_POD_NAME"
-	EnvVarPodNamespace      = "MY_POD_NAMESPACE"
-	EnvVarPodIP             = "MY_POD_IP"
-	EnvVarPodServiceAccount = "MY_POD_SERVICE_ACCOUNT"
-	ServerStatus            = "MY_SERVER_STATUS"
-	StatusHeader            = "STATUS_HEADER"
-	ServerStatusHeader      = "Istio Hybrid Multi-Zone Mesh Status"
-)
-
 var templateDir = flag.String("template_dir", "data/templates", "Root path for HTML templates")
 var httpPort = flag.String("http_port", "8080", "Port for serving http traffic")
 var nsIgnoreRegex = flag.String("namespace_ignore_list", "kube-system", "Regex of namespaces that need to be ignored by this agent")
 
 type StatuszInfo struct {
-	ProcInfo              *ProcessInfo
+	MeshInfo              *mesh.MeshInfo
 	TargetUrl             *string
 	TargetHealthzResponse *string
-}
-
-type ProcessInfo struct {
-	labels map[string]string
-	mu     sync.RWMutex
-}
-
-func NewProcessInfo() *ProcessInfo {
-	pi := ProcessInfo{map[string]string{}, sync.RWMutex{}}
-	return &pi
-}
-
-func buildStatus(m *ProcessInfo, statusHeader string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.labels[StatusHeader] = statusHeader
-	m.labels[EnvVarNodeName] = os.Getenv(EnvVarNodeName)
-	m.labels[EnvVarPodName] = os.Getenv(EnvVarPodName)
-	m.labels[EnvVarPodNamespace] = os.Getenv(EnvVarPodNamespace)
-	m.labels[EnvVarPodIP] = os.Getenv(EnvVarPodIP)
-	m.labels[EnvVarPodServiceAccount] = os.Getenv(EnvVarPodServiceAccount)
-	m.labels[ServerStatus] = "Initializing"
-}
-
-func (m ProcessInfo) SetHealth(newStatus string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.labels[ServerStatus] = newStatus
-}
-
-func (m ProcessInfo) GetStatusHeader() string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.labels[StatusHeader]
-}
-
-func (m ProcessInfo) GetNodeName() string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.labels[EnvVarNodeName]
-}
-
-func (m ProcessInfo) GetPodName() string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.labels[EnvVarPodName]
-}
-
-func (m ProcessInfo) GetPodNamespace() string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.labels[EnvVarPodNamespace]
-}
-
-func (m ProcessInfo) GetPodIP() string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.labels[EnvVarPodIP]
-}
-
-func (m ProcessInfo) GetServerStatus() string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.labels[ServerStatus]
 }
 
 func main() {
@@ -112,9 +36,9 @@ func main() {
 		fmt.Printf("--%-15.15s:%s\n", f.Name, f.Value.String())
 	})
 
-	pi := NewProcessInfo()
-	buildStatus(pi, ServerStatusHeader)
-	si := StatuszInfo{pi, nil, nil}
+	mi := mesh.NewMeshInfo()
+	mi.BuildStatus(mesh.ServerStatusHeader)
+	si := StatuszInfo{mi, nil, nil}
 
 	// Handle all templates
 	pattern := filepath.Join(*templateDir, "*")
@@ -148,7 +72,7 @@ func main() {
 		}
 	})
 	http.HandleFunc("/healthz.html", func(w http.ResponseWriter, r *http.Request) {
-		err := tmpl.ExecuteTemplate(w, "healthz.html", &pi)
+		err := tmpl.ExecuteTemplate(w, "healthz.html", &mi)
 		if err != nil {
 			fmt.Printf("Error in healthz.html\n%s", err.Error())
 		}
@@ -184,7 +108,7 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	agent := mesh.NewMeshSyncAgent(agentClient, sl, pi)
+	agent := mesh.NewMeshSyncAgent(agentClient, sl, mi)
 	podHandler := controllers.NewPodHandler(pl)
 
 	podClient, err := kubernetes.NewForConfig(config)

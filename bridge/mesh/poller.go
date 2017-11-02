@@ -58,7 +58,7 @@ func (p *Poller) Run() {
 	p.err = nil
 }
 
-func (pollers *ExternalZonePollers) ReconcilePollers(ms crv1.MeshSpec, localZone string) {
+func (pollers *ExternalZonePollers) Reconcile(ms crv1.MeshSpec, localZone string) {
 	zonesToKeep := ExternalZonePollers{}
 	zonesToAdd := ExternalZonePollers{}
 	var done struct{}
