@@ -1,7 +1,6 @@
 package mesh
 
 import (
-	"encoding/json"
 	"net"
 	"strings"
 	"sync"
@@ -25,7 +24,7 @@ type MeshSyncAgent struct {
 	agentVips    map[string]bool
 	localZone    string
 	clientset    *kubernetes.Clientset
-	exportedEp   *EndpointSubsetMap
+	exportedEp   []byte
 	importedEp   map[string]*EndpointSubsetMap
 	zonePollers  ExternalZonePollers
 	mu           sync.RWMutex
@@ -41,7 +40,7 @@ type ServiceEndpointSubsetGetter interface {
 }
 
 func NewMeshSyncAgent(clientset *kubernetes.Clientset, ssGetter ServiceEndpointSubsetGetter, healthSetter HealthSetter) *MeshSyncAgent {
-	return &MeshSyncAgent{ssGetter, healthSetter, nil, map[string]bool{}, "", clientset, nil, map[string]*EndpointSubsetMap{}, ExternalZonePollers{}, sync.RWMutex{}}
+	return &MeshSyncAgent{ssGetter, healthSetter, nil, map[string]bool{}, "", clientset, []byte("{}"), map[string]*EndpointSubsetMap{}, ExternalZonePollers{}, sync.RWMutex{}}
 }
 
 func (a *MeshSyncAgent) GetMeshSpec() crv1.MeshSpec {
@@ -56,27 +55,13 @@ func (a *MeshSyncAgent) GetMeshSpec() crv1.MeshSpec {
 func (a *MeshSyncAgent) GetExportedEndpoints() []byte {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	emptyReturn := []byte("{}")
-	if a.exportedEp == nil {
-		return emptyReturn
-	}
-	b, err := json.Marshal(a.exportedEp.epSubset)
-	if err != nil {
-		glog.Warningf("Unable to export endpoints %v", err)
-		return emptyReturn
-	}
-	return b
+	return a.exportedEp
 }
 
-func (a *MeshSyncAgent) ExportLocalEndpointSubsets(m EndpointSubsetMap) {
-	// Make a local copy, cause reconcile will change m
-	exported := NewEndpointSubsetMap()
-	for k, ss := range m.epSubset {
-		exported.epSubset[k] = ss
-	}
+func (a *MeshSyncAgent) ExportLocalEndpointSubsets(jsonMap []byte) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.exportedEp = exported
+	a.exportedEp = jsonMap
 }
 
 func (a *MeshSyncAgent) GetMeshStatus() (crv1.MeshSpec, bool) {
@@ -220,8 +205,8 @@ func (a *MeshSyncAgent) runWorker() {
 	}
 
 	actualMap := a.GetActualEndpointSubsets()
+	a.ExportLocalEndpointSubsets(actualMap.ToJson()) // For what it's worth, this is what is available right now
 	expectedMap := a.ssGetter.GetExpectedEndpointSubsets(a.localZone)
-	//	a.ExportLocalEndpointSubsets(expectedMap)
 	glog.Infof("\n\nPre reconciliation: Actual ss count: '%d', Expected ss count: '%d'", len(actualMap.epSubset), len(expectedMap.epSubset))
 	a.Reconcile(actualMap, expectedMap)
 }

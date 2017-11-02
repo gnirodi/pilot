@@ -3,8 +3,9 @@ package mesh
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
-	// "github.com/golang/glog"
+	"github.com/golang/glog"
 	"k8s.io/api/core/v1"
 	"sort"
 	"strings"
@@ -111,6 +112,36 @@ func (es *EndpointSubset) ComputeName() {
 	es.Name = fmt.Sprintf("%x", sha256.Sum256([]byte(es.Key)))
 }
 
+func (eps *EndpointSubset) ToK8sEndpoints() v1.Endpoints {
+	vep := v1.Endpoints{}
+	vep.SetName(eps.Name)
+	vep.SetNamespace(eps.Namespace)
+	vep.Subsets = []v1.EndpointSubset{}
+	vepLabels := map[string]string{LabelMeshEndpoint: "true", LabelService: eps.Service, LabelZone: eps.Zone}
+	portLabelSet := false
+	vepss := v1.EndpointSubset{}
+	vepss.Ports = []v1.EndpointPort{}
+	vepss.Addresses = []v1.EndpointAddress{}
+	for _, ep := range eps.KeyEndpointMap {
+		if !portLabelSet {
+			vepLabels[LabelPort] = ep.SrvPort
+			for k, v := range ep.PodLabels {
+				vepLabels[k] = v
+			}
+			vep.SetLabels(vepLabels)
+			vepPort := v1.EndpointPort{}
+			vepPort.Name = ep.SrvPort
+			vepPort.Port = ep.Port.ContainerPort
+			vepPort.Protocol = ep.Port.Protocol
+			vepss.Ports = append(vepss.Ports, vepPort)
+			portLabelSet = true
+		}
+		vepss.Addresses = append(vepss.Addresses, v1.EndpointAddress{ep.PodIP, "", nil, nil})
+	}
+	vep.Subsets = append(vep.Subsets, vepss)
+	return vep
+}
+
 func (m *EndpointSubsetMap) AddEndpoint(template *Endpoint, svc string, zone string) {
 	ep := template.DeepCopy()
 	ep.Service = svc
@@ -142,34 +173,14 @@ func (m *EndpointSubsetMap) EnsureUniqueName(eps *EndpointSubset) {
 	}
 }
 
-func (eps *EndpointSubset) ToK8sEndpoints() v1.Endpoints {
-	vep := v1.Endpoints{}
-	vep.SetName(eps.Name)
-	vep.SetNamespace(eps.Namespace)
-	vep.Subsets = []v1.EndpointSubset{}
-	vepLabels := map[string]string{LabelMeshEndpoint: "true", LabelService: eps.Service, LabelZone: eps.Zone}
-	portLabelSet := false
-	vepss := v1.EndpointSubset{}
-	vepss.Ports = []v1.EndpointPort{}
-	vepss.Addresses = []v1.EndpointAddress{}
-	for _, ep := range eps.KeyEndpointMap {
-		if !portLabelSet {
-			vepLabels[LabelPort] = ep.SrvPort
-			for k, v := range ep.PodLabels {
-				vepLabels[k] = v
-			}
-			vep.SetLabels(vepLabels)
-			vepPort := v1.EndpointPort{}
-			vepPort.Name = ep.SrvPort
-			vepPort.Port = ep.Port.ContainerPort
-			vepPort.Protocol = ep.Port.Protocol
-			vepss.Ports = append(vepss.Ports, vepPort)
-			portLabelSet = true
-		}
-		vepss.Addresses = append(vepss.Addresses, v1.EndpointAddress{ep.PodIP, "", nil, nil})
+func (m *EndpointSubsetMap) ToJson() []byte {
+	emptyReturn := []byte("{}")
+	b, err := json.Marshal(m.epSubset)
+	if err != nil {
+		glog.Warningf("Unable to export endpoints %v", err)
+		return emptyReturn
 	}
-	vep.Subsets = append(vep.Subsets, vepss)
-	return vep
+	return b
 }
 
 func NewEndpointSubsetMapFromList(l *v1.EndpointsList) *EndpointSubsetMap {
