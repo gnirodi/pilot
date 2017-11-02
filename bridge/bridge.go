@@ -25,6 +25,7 @@ var nsIgnoreRegex = flag.String("namespace_ignore_list", "kube-system", "Regex o
 
 type StatuszInfo struct {
 	MeshInfo              *mesh.MeshInfo
+	Refresh               *string
 	TargetUrl             *string
 	TargetHealthzResponse *string
 }
@@ -38,13 +39,19 @@ func main() {
 
 	mi := mesh.NewMeshInfo()
 	mi.BuildStatus(mesh.ServerStatusHeader)
-	si := StatuszInfo{mi, nil, nil}
 
 	// Handle all templates
 	pattern := filepath.Join(*templateDir, "*")
 	tmpl := template.Must(template.ParseGlob(pattern))
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		t := r.FormValue("targetserver")
+		si := StatuszInfo{mi, nil, nil, nil}
+		refresh := r.FormValue("refresh")
+		if refresh == "1" {
+			si.Refresh = &refresh
+		} else {
+			si.Refresh = nil
+		}
 		var targetResp string
 		if len(t) > 0 {
 			if resp, err := http.Get("http://" + t + "/healthz.html"); err == nil {

@@ -11,13 +11,44 @@
   <div class="snm">Pod Namespace</div> <div class="svl">{{ .MeshInfo.GetPodNamespace }}</div>
   <div class="snm">Pod Name</div> <div class="svl">{{ .MeshInfo.GetPodName }}</div>
   <div class="snm">Pod IP</div> <div class="svl">{{ .MeshInfo.GetPodIP }}</div>
-  <div class="snm">Status</div> <div class="svl-ok">{{ .MeshInfo.GetServerStatus }}</div>
+  <div class="snm"> </div> <div class="svl"> </div>
+  <div class="snm">Status</div> 
+{{if eq  .MeshInfo.GetServerStatus "Active" }}
+  {{if not .MeshInfo.GetAgentWarnings }}
+    <div class="svl-ok">
+  {{else}}
+    <div class="svl-warning">
+  {{end}}
+{{else}}
+  <div class="svl-inactive">
+{{end}}
+  {{ .MeshInfo.GetServerStatus }}</div>
+  <div class="snm">Started</div> <div class="svl">{{ .MeshInfo.GetStartTime }}</div>
+  <div class="snm">Updated</div> <div class="svl">{{ .MeshInfo.GetUpdateTime }}</div>
+  <div class="snm">Endpoints Created</div> <div class="svl">{{ .MeshInfo.GetEndpointsCreated }}</div>
+  <div class="snm">Endpoints Updated</div> <div class="svl">{{ .MeshInfo.GetEndpointsUpdated }}</div>
+  <div class="snm">Endpoints Deleted</div> <div class="svl">{{ .MeshInfo.GetEndpointsDeleted }}</div>
+  <div class="snm">Endpoints Errors</div> <div class="svl">{{ .MeshInfo.GetEndpointErrors }}</div>
 </div>
 <hr>
-
+{{if .MeshInfo.GetAgentWarnings}}
+<div class="warning">
+{{range $index, $warning := .MeshInfo.GetAgentWarnings}}
+{{ $warning }} <br>
+{{end}}
+</div>
+<hr>
+{{end}}
 <form action="/index.html" method="get">
-  <b>Check Server Health:</b> Server IP or Service Name <input type="text" name="targetserver"> <input type="submit" value="Submit">
+  <b>Check Server Health:</b> Server IP or Service Name <input type="text" name="targetserver"> <input type="submit" value="Submit">&nbsp;&nbsp;Refresh <input type="checkbox" name="refresh" value="1" {{if .Refresh}} checked {{end}} >
 </form>
+{{if .Refresh}}
+<script>
+  setTimeout(function(){
+    window.location.reload(1);
+  }, 3000);
+</script>
+{{end}}
 {{if .TargetHealthzResponse}}
 <br>
 Server Healthz Response from: {{.TargetUrl}}

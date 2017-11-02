@@ -13,17 +13,18 @@ import (
 )
 
 type Poller struct {
-	zoneSpec      crv1.ZoneSpec
-	stop          chan struct{}
-	importedSsMap *EndpointSubsetMap
-	err           *error
-	mu            sync.RWMutex
+	zoneSpec        crv1.ZoneSpec
+	zoneDisplayInfo *ZoneDisplayInfo
+	stop            chan struct{}
+	importedSsMap   *EndpointSubsetMap
+	err             *error
+	mu              sync.RWMutex
 }
 
 type ExternalZonePollers map[string]*Poller
 
 func NewPoller(zone crv1.ZoneSpec) *Poller {
-	p := Poller{zone, make(chan struct{}, 1), nil, nil, sync.RWMutex{}}
+	p := Poller{zone, NewZoneDisplayInfo(zone.ZoneName), make(chan struct{}, 1), nil, nil, sync.RWMutex{}}
 	return &p
 }
 
@@ -58,7 +59,7 @@ func (p *Poller) Run() {
 	p.err = nil
 }
 
-func (pollers *ExternalZonePollers) Reconcile(ms crv1.MeshSpec, localZone string) {
+func (pollers *ExternalZonePollers) Reconcile(ms crv1.MeshSpec, localZone string, currentRunInfo MeshInfo) {
 	zonesToKeep := ExternalZonePollers{}
 	zonesToAdd := ExternalZonePollers{}
 	var done struct{}
