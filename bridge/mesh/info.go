@@ -26,7 +26,7 @@ type MeshInfo struct {
 	endpointsUpdated int64
 	endpointsDeleted int64
 	endpointErrors   int64
-	zones            map[string]*ZoneDisplayInfo
+	zones            map[string]ZoneDisplayInfo
 	mu               sync.RWMutex
 }
 
@@ -41,7 +41,7 @@ func NewZoneDisplayInfo(z string) *ZoneDisplayInfo {
 }
 
 func NewMeshInfo() *MeshInfo {
-	pi := MeshInfo{map[string]string{}, []string{}, 0, 0, 0, 0, map[string]*ZoneDisplayInfo{}, sync.RWMutex{}}
+	pi := MeshInfo{map[string]string{}, []string{}, 0, 0, 0, 0, map[string]ZoneDisplayInfo{}, sync.RWMutex{}}
 	return &pi
 }
 
@@ -88,7 +88,7 @@ func (m *MeshInfo) SetStatus(currentRunInfo *MeshInfo) {
 	m.endpointsUpdated = m.endpointsUpdated + currentRunInfo.endpointsUpdated
 	m.endpointsDeleted = m.endpointsDeleted + currentRunInfo.endpointsDeleted
 	m.endpointErrors = m.endpointErrors + currentRunInfo.endpointErrors
-	m.zones = map[string]*ZoneDisplayInfo{}
+	m.zones = map[string]ZoneDisplayInfo{}
 	for i, v := range currentRunInfo.zones {
 		m.zones[i] = v
 	}
@@ -171,7 +171,7 @@ func (m *MeshInfo) GetAgentWarnings() []string {
 	return m.agentWarnings
 }
 
-func (m *MeshInfo) GetZoneDisplayInfo() map[string]*ZoneDisplayInfo {
+func (m *MeshInfo) GetZoneDisplayInfo() map[string]ZoneDisplayInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.zones
@@ -228,7 +228,7 @@ func (m *MeshInfo) AddAgentWarning(w string) {
 // and update a separate MeshInfo in a thread
 // safe manner via SetStatus
 func (m *MeshInfo) AddZoneDisplayInfo(z ZoneDisplayInfo) {
-	m.zones[z.ZoneName] = &z
+	m.zones[z.ZoneName] = z
 }
 
 func (m *MeshInfo) SetLabel(k, v string) {

@@ -13,53 +13,76 @@ import (
 )
 
 type Poller struct {
-	zoneSpec        crv1.ZoneSpec
-	zoneDisplayInfo *ZoneDisplayInfo
-	stop            chan struct{}
-	importedSsMap   *EndpointSubsetMap
-	err             *error
-	mu              sync.RWMutex
+	zoneSpec      crv1.ZoneSpec
+	stop          chan struct{}
+	importedSsMap *EndpointSubsetMap
+	err           *PollerError
+	mu            sync.RWMutex
 }
 
 type ExternalZonePollers map[string]*Poller
 
 func NewPoller(zone crv1.ZoneSpec) *Poller {
-	p := Poller{zone, NewZoneDisplayInfo(zone.ZoneName), make(chan struct{}, 1), nil, nil, sync.RWMutex{}}
+	p := Poller{zone, make(chan struct{}, 1), nil, nil, sync.RWMutex{}}
 	return &p
 }
 
-func (p *Poller) updateError(err *error) {
-	glog.Errorf("Error fetching endpoints from zone %s: %v", p.zoneSpec.ZoneName, err)
+type PollerError struct {
+	zoneName string
+	err      error
+}
+
+func (e *PollerError) Error() string {
+	return "Error fetching endpoints from zone " + e.zoneName + " Error: " + e.err.Error()
+}
+
+func (p *Poller) updateError(err error) {
+	pe := PollerError{p.zoneSpec.ZoneName, err}
+	glog.Error(pe.Error())
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.err = err
+	p.err = &pe
+}
+
+func (p *Poller) GetZoneStatus() (ZoneDisplayInfo, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	countEp := 0
+	if p.importedSsMap != nil {
+		countEp = len(p.importedSsMap.epSubset)
+	}
+	if p.err != nil {
+		return ZoneDisplayInfo{p.zoneSpec.ZoneName, countEp}, p.err
+	} else {
+		return ZoneDisplayInfo{p.zoneSpec.ZoneName, countEp}, nil
+	}
 }
 
 func (p *Poller) Run() {
 	resp, err := http.Get("http://" + p.zoneSpec.MeshSyncAgentVip + "/mesh/v1/endpoints/")
 	if err != nil {
-		p.updateError(&err)
+		p.updateError(err)
 		return
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		p.updateError(&err)
+		p.updateError(err)
 		return
 	}
-	epSS := NewEndpointSubsetMap()
-	err = json.Unmarshal(body, &epSS)
+	epsm := NewEndpointSubsetMap()
+	err = json.Unmarshal(body, &epsm.epSubset)
 	if err != nil {
-		p.updateError(&err)
+		p.updateError(err)
 		return
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.importedSsMap = epSS
+	p.importedSsMap = epsm
 	p.err = nil
 }
 
-func (pollers *ExternalZonePollers) Reconcile(ms crv1.MeshSpec, localZone string, currentRunInfo MeshInfo) {
+func (pollers *ExternalZonePollers) Reconcile(ms crv1.MeshSpec, localZone string, currentRunInfo *MeshInfo) {
 	zonesToKeep := ExternalZonePollers{}
 	zonesToAdd := ExternalZonePollers{}
 	var done struct{}
@@ -94,6 +117,11 @@ func (pollers *ExternalZonePollers) Reconcile(ms crv1.MeshSpec, localZone string
 	// Add back pollers to keep
 	for zoneName, poller := range zonesToKeep {
 		(*pollers)[zoneName] = poller
+		zdi, err := poller.GetZoneStatus()
+		currentRunInfo.AddZoneDisplayInfo(zdi)
+		if err != nil {
+			currentRunInfo.AddAgentWarning(err.Error())
+		}
 	}
 
 	// Add new pollers

@@ -3,6 +3,7 @@ package mesh
 import (
 	"fmt"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -96,7 +97,7 @@ func (a *MeshSyncAgent) GetMeshStatus() bool {
 		return false
 	}
 	a.localZone = tmpZone
-	a.zonePollers.Reconcile(ms, a.localZone, a.currentRunInfo)
+	a.zonePollers.Reconcile(ms, a.localZone, &a.currentRunInfo)
 	return true
 }
 
@@ -223,6 +224,14 @@ func (a *MeshSyncAgent) UpdateMesh(meshCrd *crv1.Mesh) {
 
 func (a *MeshSyncAgent) Run(stopCh chan struct{}) {
 	glog.Info("Daemon initializing")
+
+	// Start endpoint for cross zone sync
+	http.HandleFunc("/mesh/v1/endpoints/", func(w http.ResponseWriter, r *http.Request) {
+		b := a.GetExportedEndpoints()
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Write(b)
+	})
+
 	go wait.Until(a.runWorker, time.Second, stopCh)
 	<-stopCh
 }
@@ -238,6 +247,7 @@ func (a *MeshSyncAgent) runWorker() {
 	}
 	a.currentRunInfo.SetLabel(ServerStatus, "Active")
 	actualMap := a.GetActualEndpointSubsets()
+	a.currentRunInfo.AddZoneDisplayInfo(ZoneDisplayInfo{a.localZone, len(actualMap.epSubset)})
 	a.ExportLocalEndpointSubsets(actualMap.ToJson()) // For what it's worth, this is what is available right now
 	expectedMap := a.ssGetter.GetExpectedEndpointSubsets(a.localZone)
 	if glog.V(2) {

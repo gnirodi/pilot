@@ -3,16 +3,17 @@
 <head> 
   <title>{{ .MeshInfo.GetStatusHeader }} {{ .MeshInfo.GetNodeName }} </title>
   <link rel="stylesheet" type="text/css" href="/statusz.css" />
+  <link href="//fonts.googleapis.com/css?family=Roboto:400,500|Inconsolata:400,700|Roboto Mono:400" rel="stylesheet" type="text/css">  
 </head>
 <body>
-<h1>{{ .MeshInfo.GetStatusHeader }}</h1>
+<h1><img class="logo" src="/logo.png" alt="Istio" width="36px" height="54px"/>{{ .MeshInfo.GetStatusHeader }}</h1>
 <div class="sts">
-  <div class="snm">Node Name</div> <div class="svl">{{ .MeshInfo.GetNodeName }}</div>
-  <div class="snm">Pod Namespace</div> <div class="svl">{{ .MeshInfo.GetPodNamespace }}</div>
-  <div class="snm">Pod Name</div> <div class="svl">{{ .MeshInfo.GetPodName }}</div>
-  <div class="snm">Pod IP</div> <div class="svl">{{ .MeshInfo.GetPodIP }}</div>
+  <div class="snm">Node Name:</div> <div class="svl">{{ .MeshInfo.GetNodeName }}</div>
+  <div class="snm">Pod Namespace:</div> <div class="svl">{{ .MeshInfo.GetPodNamespace }}</div>
+  <div class="snm">Pod Name:</div> <div class="svl">{{ .MeshInfo.GetPodName }}</div>
+  <div class="snm">Pod IP:</div> <div class="svl">{{ .MeshInfo.GetPodIP }}</div>
   <div class="snm"> </div> <div class="svl"> </div>
-  <div class="snm">Status</div> 
+  <div class="snm">Status:</div>
 {{if eq  .MeshInfo.GetServerStatus "Active" }}
   {{if not .MeshInfo.GetAgentWarnings }}
     <div class="svl-ok">
@@ -23,12 +24,12 @@
   <div class="svl-inactive">
 {{end}}
   {{ .MeshInfo.GetServerStatus }}</div>
-  <div class="snm">Started</div> <div class="svl">{{ .MeshInfo.GetStartTime }}</div>
-  <div class="snm">Updated</div> <div class="svl">{{ .MeshInfo.GetUpdateTime }}</div>
-  <div class="snm">Endpoints Created</div> <div class="svl">{{ .MeshInfo.GetEndpointsCreated }}</div>
-  <div class="snm">Endpoints Updated</div> <div class="svl">{{ .MeshInfo.GetEndpointsUpdated }}</div>
-  <div class="snm">Endpoints Deleted</div> <div class="svl">{{ .MeshInfo.GetEndpointsDeleted }}</div>
-  <div class="snm">Endpoints Errors</div> <div class="svl">{{ .MeshInfo.GetEndpointErrors }}</div>
+  <div class="snm">Started:</div> <div class="svl">{{ .MeshInfo.GetStartTime }}</div>
+  <div class="snm">Updated:</div> <div class="svl">{{ .MeshInfo.GetUpdateTime }}</div>
+  <div class="snm">Endpoints Created:</div> <div class="svl">{{ .MeshInfo.GetEndpointsCreated }}</div>
+  <div class="snm">Endpoints Updated:</div> <div class="svl">{{ .MeshInfo.GetEndpointsUpdated }}</div>
+  <div class="snm">Endpoints Deleted:</div> <div class="svl">{{ .MeshInfo.GetEndpointsDeleted }}</div>
+  <div class="snm">Endpoints Errors:</div> <div class="svl">{{ .MeshInfo.GetEndpointErrors }}</div>
 </div>
 <hr>
 {{if .MeshInfo.GetAgentWarnings}}
@@ -40,7 +41,7 @@
 <hr>
 {{end}}
 <form action="/index.html" method="get">
-  <b>Check Server Health:</b> Server IP or Service Name <input type="text" name="targetserver"> <input type="submit" value="Submit">&nbsp;&nbsp;Refresh <input type="checkbox" name="refresh" value="1" {{if .Refresh}} checked {{end}} >
+  Check Server Health: Server IP or Service Name <input type="text" name="targetserver"> <input type="submit" value="Submit">&nbsp;&nbsp;Refresh <input type="checkbox" name="refresh" value="1" {{if .Refresh}} checked {{end}} >
 </form>
 {{if .Refresh}}
 <script>
@@ -57,5 +58,19 @@ Server Healthz Response from: {{.TargetUrl}}
 </pre>
 {{end}}
 <hr>
+{{if .MeshInfo.GetZoneDisplayInfo }}
+<div class="istio">
+<table>
+<thead>
+  <tr> <th>Zone Name</th> <th>Endpoints</th> </tr>
+</thead>
+<tbody>
+{{range $index, $element := .MeshInfo.GetZoneDisplayInfo}}
+  <tr> <td> <a href="/index.html?zone={{$element.ZoneName}}&refresh={{if $.Refresh}}1{{end}}&"a> {{$element.ZoneName}}<a></td> <td> {{$element.CountEndpoints}} </td> </tr>
+{{end}}
+</tbody>
+</table>
+<hr>
+{{end}}
 </body>
 </html>

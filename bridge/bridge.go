@@ -3,8 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"html/template"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -23,13 +21,6 @@ var templateDir = flag.String("template_dir", "data/templates", "Root path for H
 var httpPort = flag.String("http_port", "8080", "Port for serving http traffic")
 var nsIgnoreRegex = flag.String("namespace_ignore_list", "kube-system", "Regex of namespaces that need to be ignored by this agent")
 
-type StatuszInfo struct {
-	MeshInfo              *mesh.MeshInfo
-	Refresh               *string
-	TargetUrl             *string
-	TargetHealthzResponse *string
-}
-
 func main() {
 	flag.Parse()
 	fmt.Printf("Istio Service Mesh Sync Agent.\n")
@@ -39,54 +30,6 @@ func main() {
 
 	mi := mesh.NewMeshInfo()
 	mi.BuildStatus(mesh.ServerStatusHeader)
-
-	// Handle all templates
-	pattern := filepath.Join(*templateDir, "*")
-	tmpl := template.Must(template.ParseGlob(pattern))
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		t := r.FormValue("targetserver")
-		si := StatuszInfo{mi, nil, nil, nil}
-		refresh := r.FormValue("refresh")
-		if refresh == "1" {
-			si.Refresh = &refresh
-		} else {
-			si.Refresh = nil
-		}
-		var targetResp string
-		if len(t) > 0 {
-			if resp, err := http.Get("http://" + t + "/healthz.html"); err == nil {
-				defer resp.Body.Close()
-				if body, err := ioutil.ReadAll(resp.Body); err == nil {
-					targetResp = string(body)
-					si.TargetUrl = &t
-					si.TargetHealthzResponse = &targetResp
-				} else {
-					targetResp = err.Error()
-					si.TargetUrl = &t
-					si.TargetHealthzResponse = &targetResp
-				}
-			} else {
-				targetResp = err.Error()
-				si.TargetHealthzResponse = &targetResp
-			}
-		} else {
-			si.TargetUrl = nil
-			si.TargetHealthzResponse = nil
-		}
-		err := tmpl.ExecuteTemplate(w, "statusz.html", &si)
-		if err != nil {
-			fmt.Printf("Error in statusz.html:\n%s", err.Error())
-		}
-	})
-	http.HandleFunc("/healthz.html", func(w http.ResponseWriter, r *http.Request) {
-		err := tmpl.ExecuteTemplate(w, "healthz.html", &mi)
-		if err != nil {
-			fmt.Printf("Error in healthz.html\n%s", err.Error())
-		}
-	})
-	http.HandleFunc("/statusz.css", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, filepath.Join(*templateDir, "/statusz.css"))
-	})
 
 	// Start syncing state
 	var kubeconfig *string
@@ -111,6 +54,8 @@ func main() {
 	pl := mesh.NewPodList(*nsIgnoreRegex)
 	sl := mesh.NewServiceList(*nsIgnoreRegex, pl)
 
+	// TODO(gnirodi): Investigate if k8s clients are thread safe and consolidate number of
+	// clients if possible
 	agentClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err.Error())
@@ -138,6 +83,13 @@ func main() {
 	}
 	mshController := controllers.CreateCrdController(mshClient, mshHandler)
 
+	queryClientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
+	si := mesh.NewStatuszInfo(mi)
+	si.Init(queryClientset, *templateDir)
+
 	// Now let's start the controllers
 	stop := make(chan struct{})
 	defer close(stop)
@@ -146,12 +98,6 @@ func main() {
 	go svcController.Run(1, stop)
 	go mshController.Run(1, stop)
 	go agent.Run(stop)
-
-	http.HandleFunc("/mesh/v1/endpoints/", func(w http.ResponseWriter, r *http.Request) {
-		b := agent.GetExportedEndpoints()
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.Write(b)
-	})
 
 	go http.ListenAndServe(":"+*httpPort, nil)
 
