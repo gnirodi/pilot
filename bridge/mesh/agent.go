@@ -38,6 +38,16 @@ type ServiceEndpointSubsetGetter interface {
 	GetAgentVips() map[string]bool
 }
 
+type EndpointDisplayInfo struct {
+	Service   *string
+	Namespace *string
+	Zone      *string
+	CsvLabels *string
+	AllLabels *string
+	HostPort  []string
+	Labels    map[string]string
+}
+
 func NewMeshSyncAgent(clientset *kubernetes.Clientset, ssGetter ServiceEndpointSubsetGetter, globalInfo *MeshInfo) *MeshSyncAgent {
 	return &MeshSyncAgent{ssGetter, globalInfo, MeshInfo{}, nil, map[string]bool{}, "", clientset, []byte("{}"),
 		map[string]*EndpointSubsetMap{}, ExternalZonePollers{}, sync.RWMutex{}}
@@ -114,6 +124,82 @@ func (a *MeshSyncAgent) GetActualEndpointSubsets() EndpointSubsetMap {
 		m = NewEndpointSubsetMapFromList(l)
 	}
 	return *m
+}
+
+func (a *MeshSyncAgent) ExecuteEndpointQuery(query *EndpointDisplayInfo) []EndpointDisplayInfo {
+	res := []EndpointDisplayInfo{}
+	hasZone := query.Zone != nil
+	hasService := query.Service != nil
+	hasNamespace := query.Namespace != nil
+	hasLabels := query.CsvLabels != nil
+	labels := []string{LabelMeshEndpoint + "=true"}
+	if hasLabels {
+		labels = strings.Split(*query.CsvLabels, ",")
+	}
+	if hasZone {
+		labels = append(labels, LabelZone+"="+*query.Zone)
+	}
+	if hasService {
+		labels = append(labels, LabelService+"="+*query.Service)
+	}
+	Namespace := ""
+	if hasNamespace {
+		Namespace = *query.Namespace
+	}
+	opts := v1.ListOptions{}
+	opts.LabelSelector = strings.Join(labels, ",")
+	l, err := a.clientset.CoreV1().Endpoints(Namespace).List(opts)
+	if err != nil {
+		msg := fmt.Sprintf("Error fetching endpoints: %s", err.Error())
+		a.currentRunInfo.AddAgentWarning(msg)
+		glog.Error(msg)
+	} else {
+		m := NewEndpointSubsetMapFromList(l)
+		groupByKeyMap := map[string]EndpointDisplayInfo{}
+		for _, epss := range m.epSubset {
+			switch {
+			case hasZone && !hasService:
+				// Group by service
+				AddEndpointSubset(groupByKeyMap, epss.Service, &epss)
+				break
+			case hasService && !hasZone:
+				// Group by zone
+				AddEndpointSubset(groupByKeyMap, epss.Zone, &epss)
+				break
+			case hasService && hasZone:
+				// No grouping
+				AddEndpointSubset(groupByKeyMap, "", &epss)
+				break
+			}
+		}
+	}
+	return res
+}
+
+func AddEndpointSubset(groupByKeyMap map[string]EndpointDisplayInfo, key string, epss *EndpointSubset) {
+	if key == "" {
+		for _, ep := range epss.KeyEndpointMap {
+			epdi := EndpointDisplayInfo{&epss.Service, &epss.Namespace, &epss.Zone, nil, nil,
+				[]string{ep.PodIP + ":" + fmt.Sprintf("%d", ep.Port.ContainerPort)}, ep.PodLabels}
+			groupByKeyMap[fmt.Sprintf("%d", len(groupByKeyMap))] = epdi
+		}
+	}
+	epdi, found := groupByKeyMap[key]
+	if found {
+		if len(epdi.HostPort) >= 2 {
+			return
+		} else {
+			epdi := EndpointDisplayInfo{&epss.Service, &epss.Namespace, &epss.Zone, nil, nil, []string{}, map[string]string{}}
+			groupByKeyMap[key] = epdi
+		}
+		for _, ep := range epss.KeyEndpointMap {
+			hostport := ep.PodIP + ":" + fmt.Sprintf("%d", ep.Port.ContainerPort)
+			epdi.HostPort = append(epdi.HostPort, hostport)
+			if len(epdi.HostPort) >= 2 {
+				break
+			}
+		}
+	}
 }
 
 func (a *MeshSyncAgent) Reconcile(actual EndpointSubsetMap, expected EndpointSubsetMap) {

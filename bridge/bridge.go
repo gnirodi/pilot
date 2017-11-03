@@ -83,12 +83,8 @@ func main() {
 	}
 	mshController := controllers.CreateCrdController(mshClient, mshHandler)
 
-	queryClientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
 	si := mesh.NewStatuszInfo(mi)
-	si.Init(queryClientset, *templateDir)
+	si.Init(agent, *templateDir)
 
 	// Now let's start the controllers
 	stop := make(chan struct{})
