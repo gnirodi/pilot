@@ -7,6 +7,11 @@
 </head>
 <body>
 <h1><img class="logo" src="/logo.png" alt="Istio" width="36px" height="54px"/>{{ .MeshInfo.GetStatusHeader }}</h1>
+{{/*
+*****************************************************
+                    Basic Status
+*****************************************************
+*/}}
 <div class="sts">
   <div class="snm">Node Name:</div> <div class="svl">{{ .MeshInfo.GetNodeName }}</div>
   <div class="snm">Pod Namespace:</div> <div class="svl">{{ .MeshInfo.GetPodNamespace }}</div>
@@ -40,6 +45,11 @@
 </div>
 <hr>
 {{end}}
+{{/*
+*****************************************************
+                  Health Check form
+*****************************************************
+*/}}
 <form action="/index.html" method="get">
   Check Server Health: Server IP or Service Name <input type="text" name="targetserver"> <input type="submit" value="Submit">&nbsp;&nbsp;Refresh <input type="checkbox" name="refresh" value="1" {{if .Refresh}} checked {{end}} >
 </form>
@@ -58,6 +68,11 @@ Server Healthz Response from: {{.TargetUrl}}
 </pre>
 {{end}}
 <hr>
+{{/*
+*****************************************************
+                    Zone listing
+*****************************************************
+*/}}
 {{if .MeshInfo.GetZoneDisplayInfo }}
 <div class="istio">
 <table>
@@ -66,10 +81,49 @@ Server Healthz Response from: {{.TargetUrl}}
 </thead>
 <tbody>
 {{range $index, $element := .MeshInfo.GetZoneDisplayInfo}}
-  <tr> <td> <a href="/index.html?zone={{$element.ZoneName}}&refresh={{if $.Refresh}}1{{end}}&"a> {{$element.ZoneName}}<a></td> <td> {{$element.CountEndpoints}} </td> </tr>
+  <tr> <td> <a href="/index.html?zone={{$element.ZoneName}}&refresh={{if $.Refresh}}1{{end}}&">{{$element.ZoneName}}</a></td> <td> {{$element.CountEndpoints}} </td> </tr>
 {{end}}
 </tbody>
 </table>
+</div>
+<hr>
+{{end}}
+{{/*
+*****************************************************
+                    Details listing
+*****************************************************
+*/}}
+{{if .QueryResult }}
+<div class="istio">
+<table>
+<thead class="details">
+  <tr>
+{{if .QueryParms.Zone}}
+  <th>Namespace</th> <th>Service</th> <th>Endpoints</th> <th>{{if and .QueryParms.Service .QueryParms.AllLabels}}Labels{{else}}Count{{end}}</th>
+{{else if .QueryParms.Service}}
+  <th>Zone</th> <th>Namespace</th> <th>Endpoints</th> <th> </th>
+{{end}}
+  </tr>
+</thead>
+<tbody class="details">
+{{range $index, $element := .QueryResult}}
+  <tr>
+{{if $.QueryParms.Zone}}
+  <td>{{$element.Namespace}}</td>
+  <td>{{$element.Service}}</td>
+  <td>{{range $index, $endpoint := $element.HostPort}}{{if le $index 2}}{{if gt $index 1}},{{end}}<a href="/index.html?target={{$endpoint}}">{{$endpoint}}</a>{{end}}{{if eq $index 3}}...{{end}}{{end}}</td>
+  <td>{{if and $.QueryParms.Service $.QueryParms.AllLabels}}{{$element.CsvLabels}}{{else}}<a href="/index.html?zone={{$element.Zone}}&svc={{$element.Service}}&ns={{$element.Namespace}}&refresh={{if $.Refresh}}1{{end}}">{{len $element.HostPort}}</a>{{end}}</td>
+{{else if $.QueryParms.Service}}
+  <td>{{$element.Zone}}</td>
+  <td>{{$element.Namespace}}</td>
+  <td>{{range $epidx, $endpoint := $element.HostPort}}{{if le $epidx 2}}{{if gt $epidx 1}},{{end}}<a href="/index.html?target={{$endpoint}}">{{end}}{{if eq $epidx 3}}...{{end}}{{end}}</td>
+  <td><a href="/index.html?svc={{$.QueryParms.Service}}&zone={{$element.Zone}}&ns={{$element.Namespace}}&refresh={{if $.Refresh}}1{{end}}">{{len $element.HostPort}}</a></td>
+{{end}}
+  </tr>
+{{end}}
+</tbody>
+</table>  
+</div>
 <hr>
 {{end}}
 </body>

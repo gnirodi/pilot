@@ -85,7 +85,6 @@ table caption {
 }
 
 tr {
-   border-top: 1px solid #c0c0c0;
    border-bottom: 1px solid #c0c0c0;
 }
 
@@ -93,7 +92,6 @@ thead th:nth-child(1) {
   padding: 8px;
   font-size: 0.9em;
   width: 400px;
-  border-top: 1px;
 }
 
 thead th:nth-child(2) {
@@ -147,4 +145,68 @@ a:hover {
 
 form {
   padding-left: 20px;
+}
+
+thead.details th:nth-child(1) {
+  text-align: left;
+  padding: 8px;
+  font-size: 0.9em;
+  color: #000000;
+  width: 300px;
+}
+
+thead.details th:nth-child(2) {
+  text-align: left;
+  padding: 10px;
+  font-size: 0.9em;
+  color: #000000;
+  width: 300px;
+}
+
+thead.details th:nth-child(3) {
+  text-align: left;
+  padding: 10px;
+  font-size: 0.9em;
+  color: #000000;
+  width: 300px;
+}
+
+thead.details th:nth-child(4) {
+  text-align: left;
+  padding: 10px;
+  font-size: 0.9em;
+  color: #000000;
+  width: 600px;
+}
+
+tbody.details td:nth-child(1) {
+  text-align: left;
+  padding: 8px;
+  font-size: 0.9em;
+  color: #000000;
+  width: 300px;
+}
+
+tbody.details td:nth-child(2) {
+  text-align: left;
+  padding: 10px;
+  font-size: 0.9em;
+  color: #000000;
+  width: 300px;
+}
+
+tbody.details td:nth-child(3) {
+  text-align: left;
+  padding: 10px;
+  font-size: 0.9em;
+  color: #000000;
+  width: 300px;
+}
+
+tbody.details td:nth-child(4) {
+  text-align: left;
+  padding: 10px;
+  font-size: 0.9em;
+  color: #000000;
+  width: 600px;
 }

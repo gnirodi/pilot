@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -45,7 +46,6 @@ type EndpointDisplayInfo struct {
 	CsvLabels *string
 	AllLabels *string
 	HostPort  []string
-	Labels    map[string]string
 }
 
 func NewMeshSyncAgent(clientset *kubernetes.Clientset, ssGetter ServiceEndpointSubsetGetter, globalInfo *MeshInfo) *MeshSyncAgent {
@@ -172,6 +172,17 @@ func (a *MeshSyncAgent) ExecuteEndpointQuery(query *EndpointDisplayInfo) []Endpo
 				break
 			}
 		}
+		orderedKeys := make([]string, len(groupByKeyMap))
+		ki := 0
+		for k, _ := range groupByKeyMap {
+			orderedKeys[ki] = k
+			ki++
+		}
+		sort.Strings(orderedKeys)
+		for _, k := range orderedKeys {
+			v, _ := groupByKeyMap[k]
+			res = append(res, v)
+		}
 	}
 	return res
 }
@@ -180,26 +191,27 @@ func AddEndpointSubset(groupByKeyMap map[string]EndpointDisplayInfo, key string,
 	if key == "" {
 		for _, ep := range epss.KeyEndpointMap {
 			epdi := EndpointDisplayInfo{&epss.Service, &epss.Namespace, &epss.Zone, nil, nil,
-				[]string{ep.PodIP + ":" + fmt.Sprintf("%d", ep.Port.ContainerPort)}, ep.PodLabels}
+				[]string{ep.PodIP + ":" + fmt.Sprintf("%d", ep.Port.ContainerPort)}}
+			labels := []string{}
+			for k, v := range ep.PodLabels {
+				labels = append(labels, strings.Join([]string{k, v}, "="))
+			}
+			podLabels := strings.Join(labels, ",")
+			epdi.CsvLabels = &podLabels
 			groupByKeyMap[fmt.Sprintf("%d", len(groupByKeyMap))] = epdi
 		}
+		return
 	}
+	// Needs grouping
 	epdi, found := groupByKeyMap[key]
-	if found {
-		if len(epdi.HostPort) >= 2 {
-			return
-		} else {
-			epdi := EndpointDisplayInfo{&epss.Service, &epss.Namespace, &epss.Zone, nil, nil, []string{}, map[string]string{}}
-			groupByKeyMap[key] = epdi
-		}
-		for _, ep := range epss.KeyEndpointMap {
-			hostport := ep.PodIP + ":" + fmt.Sprintf("%d", ep.Port.ContainerPort)
-			epdi.HostPort = append(epdi.HostPort, hostport)
-			if len(epdi.HostPort) >= 2 {
-				break
-			}
-		}
+	if !found {
+		epdi = EndpointDisplayInfo{&epss.Service, &epss.Namespace, &epss.Zone, nil, nil, []string{}}
 	}
+	for _, ep := range epss.KeyEndpointMap {
+		hostport := ep.PodIP + ":" + fmt.Sprintf("%d", ep.Port.ContainerPort)
+		epdi.HostPort = append(epdi.HostPort, hostport)
+	}
+	groupByKeyMap[key] = epdi
 }
 
 func (a *MeshSyncAgent) Reconcile(actual EndpointSubsetMap, expected EndpointSubsetMap) {

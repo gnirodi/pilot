@@ -64,7 +64,7 @@ func (si *StatuszInfo) Init(agent *MeshSyncAgent, templateDir string) {
 			csi.QueryResult = agent.ExecuteEndpointQuery(&csi.QueryParms)
 			break
 		}
-		err := tmpl.ExecuteTemplate(w, "statusz.html", &csi)
+		err := tmpl.ExecuteTemplate(w, "statusz.html", csi)
 		if err != nil {
 			fmt.Printf("Error in statusz.html:\n%s", err.Error())
 		}
