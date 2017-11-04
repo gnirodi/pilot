@@ -37,6 +37,7 @@ type MeshSyncAgent struct {
 type ServiceEndpointSubsetGetter interface {
 	GetExpectedEndpointSubsets(localZoneName string) EndpointSubsetMap
 	GetAgentVips() map[string]bool
+	GetServiceMap() map[string]Service
 }
 
 type EndpointDisplayInfo struct {

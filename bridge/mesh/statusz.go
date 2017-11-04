@@ -82,6 +82,9 @@ func (si *StatuszInfo) Init(agent *MeshSyncAgent, templateDir string) {
 	http.HandleFunc("/logo.png", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, filepath.Join(templateDir, "/logo.png"))
 	})
+	http.HandleFunc("/favicon.png", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filepath.Join(templateDir, "/favicon.png"))
+	})
 }
 
 func GetParmValue(r *http.Request, queryParmName string, statusPtr **string) bool {

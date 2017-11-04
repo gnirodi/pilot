@@ -13,11 +13,13 @@ import (
 type MeshServiceType int
 
 const (
-	MeshSvcAnnotation   = "config.istio.io/mesh.deployment-selector"
-	MeshAgentAnnotation = "config.istio.io/mesh.agent"
-	UnknownZone         = MeshServiceType(0)
-	MeshService         = MeshServiceType(1)
-	NonMeshService      = MeshServiceType(2)
+	MeshSvcAnnotation    = "config.istio.io/mesh.deployment-selector"
+	MeshExtSvcAnnotation = "config.istio.io/mesh.external-zone-service"
+	MeshAgentAnnotation  = "config.istio.io/mesh.agent"
+	UnknownZone          = MeshServiceType(0)
+	MeshService          = MeshServiceType(1)
+	MeshExternalZoneSvc  = MeshServiceType(2)
+	NonMeshService       = MeshServiceType(3)
 )
 
 type Service struct {
@@ -62,6 +64,11 @@ func (l *ServiceList) UpdateService(key string, svc *v1.Service) {
 			return
 		}
 		meshAnnot, maFound := svc.Annotations[MeshSvcAnnotation]
+		meshExtZoneAnnot, maExtSvcFound := svc.Annotations[MeshExtSvcAnnotation]
+		if maExtSvcFound && strings.ToLower(meshExtZoneAnnot) != "true" {
+			maExtSvcFound = false
+		}
+
 		maLabels := map[string]string{}
 		if maFound {
 			mf := make(map[string]interface{})
@@ -95,6 +102,9 @@ func (l *ServiceList) UpdateService(key string, svc *v1.Service) {
 			break
 		case !maFound:
 			svcType = NonMeshService
+			break
+		case maExtSvcFound:
+			svcType = MeshExternalZoneSvc
 			break
 		case hasLabels && maFound:
 			allPresent := true
@@ -155,4 +165,20 @@ func (l *ServiceList) GetAgentVips() map[string]bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	return l.agentVips
+}
+
+// Returns map from service name to service
+func (l *ServiceList) GetServiceMap() map[string]Service {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	svcMap := make(map[string]Service, len(l.serviceMap))
+	for _, v := range l.serviceMap {
+		maLabels := make(map[string]string, len(v.Labels))
+		for l, lv := range v.Labels {
+			maLabels[l] = lv
+		}
+		svc := Service{v.Key, v.Name, v.Namespace, v.SvcType, maLabels, v.agentVip}
+		svcMap[v.Name] = svc
+	}
+	return svcMap
 }
