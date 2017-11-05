@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	LabelMeshEndpoint = "config.istio.io/mesh.endpoint"
+	LabelMeshExternal = "config.istio.io/mesh.external"
 )
 
 type MeshSyncAgent struct {
@@ -108,8 +108,22 @@ func (a *MeshSyncAgent) GetMeshStatus() bool {
 		return false
 	}
 	a.localZone = tmpZone
-	a.zonePollers.Reconcile(ms, a.localZone, &a.currentRunInfo)
+	a.importedEp = a.zonePollers.Reconcile(ms, a.localZone, &a.currentRunInfo)
 	return true
+}
+
+func (a *MeshSyncAgent) AddExternalEndpoints(actualMap *EndpointSubsetMap, expectedMap *EndpointSubsetMap) {
+	expectedExtServices := map[string]bool{}
+	for _, zoneEpMap := range a.importedEp {
+		for _, extEpss := range zoneEpMap.epSubset {
+			if extEpss.Name == extEpss.Service {
+				// This is a external service endpoint, we'll create our own one here.
+				continue
+			}
+			expectedExtServices[extEpss.Service] = true
+			expectedMap.epSubset[extEpss.Key] = *extEpss.DeepCopy()
+		}
+	}
 }
 
 func (a *MeshSyncAgent) GetActualEndpointSubsets() EndpointSubsetMap {
@@ -352,5 +366,6 @@ func (a *MeshSyncAgent) runWorker() {
 	if glog.V(2) {
 		glog.Infof("\n\nPre reconciliation: Actual ss count: '%d', Expected ss count: '%d'", len(actualMap.epSubset), len(expectedMap.epSubset))
 	}
+	a.AddExternalEndpoints(&actualMap, &expectedMap)
 	a.Reconcile(actualMap, expectedMap)
 }

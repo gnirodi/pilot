@@ -13,13 +13,12 @@ import (
 type MeshServiceType int
 
 const (
-	MeshSvcAnnotation    = "config.istio.io/mesh.deployment-selector"
-	MeshExtSvcAnnotation = "config.istio.io/mesh.external-zone-service"
-	MeshAgentAnnotation  = "config.istio.io/mesh.agent"
-	UnknownZone          = MeshServiceType(0)
-	MeshService          = MeshServiceType(1)
-	MeshExternalZoneSvc  = MeshServiceType(2)
-	NonMeshService       = MeshServiceType(3)
+	MeshSvcAnnotation   = "config.istio.io/mesh.deployment-selector"
+	MeshAgentAnnotation = "config.istio.io/mesh.agent"
+	UnknownZone         = MeshServiceType(0)
+	MeshService         = MeshServiceType(1)
+	MeshExternalZoneSvc = MeshServiceType(2)
+	NonMeshService      = MeshServiceType(3)
 )
 
 type Service struct {
@@ -64,8 +63,8 @@ func (l *ServiceList) UpdateService(key string, svc *v1.Service) {
 			return
 		}
 		meshAnnot, maFound := svc.Annotations[MeshSvcAnnotation]
-		meshExtZoneAnnot, maExtSvcFound := svc.Annotations[MeshExtSvcAnnotation]
-		if maExtSvcFound && strings.ToLower(meshExtZoneAnnot) != "true" {
+		meshExternalAnnot, maExtSvcFound := svc.Annotations[LabelMeshExternal]
+		if maExtSvcFound && strings.ToLower(meshExternalAnnot) != "true" {
 			maExtSvcFound = false
 		}
 

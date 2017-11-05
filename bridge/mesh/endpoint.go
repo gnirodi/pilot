@@ -12,10 +12,11 @@ import (
 )
 
 const (
-	KeySeparator = "$$"
-	LabelZone    = "zone"
-	LabelService = "service"
-	LabelPort    = "port"
+	KeySeparator      = "$$"
+	LabelMeshEndpoint = "config.istio.io/mesh.endpoint"
+	LabelZone         = "zone"
+	LabelService      = "service"
+	LabelPort         = "port"
 )
 
 // Endpoint representation within a Mesh is a single unique svc ip:port combination
@@ -52,6 +53,7 @@ type EndpointSubset struct {
 	SrvPort        string            `json:"srvPort"`
 	Labels         map[string]string `json:"labels"`
 	KeyEndpointMap KeyEndpointMap    `json:"keyEndpointMap"`
+	HostPortSet    map[string]bool   `json:"hostPortMap"`
 }
 
 // Maps an uncompresssed EndpointSubset name to the corresponding Endpoint subset
@@ -104,8 +106,21 @@ func (t *Endpoint) BuildSubsetKey() string {
 }
 
 func NewEndpointSubset(key, ns, svc, zone, srvPort string, lbls map[string]string) *EndpointSubset {
-	ss := EndpointSubset{key, "", ns, svc, zone, srvPort, lbls, KeyEndpointMap{}}
+	ss := EndpointSubset{key, "", ns, svc, zone, srvPort, lbls, KeyEndpointMap{}, map[string]bool{}}
 	return &ss
+}
+
+func (epss *EndpointSubset) DeepCopy() *EndpointSubset {
+	clone := NewEndpointSubset(epss.Key, epss.Name, epss.Namespace, epss.Service, epss.SrvPort,
+		make(map[string]string, len(epss.Labels)))
+	for k, v := range epss.Labels {
+		clone.Labels[k] = v
+	}
+	for keyEp, ep := range epss.KeyEndpointMap {
+		clone.KeyEndpointMap[keyEp] = ep.DeepCopy()
+		epss.HostPortSet[ep.PodIP+fmt.Sprintf(":%d", ep.Port.ContainerPort)] = true
+	}
+	return clone
 }
 
 func (es *EndpointSubset) ComputeName() {
@@ -194,9 +209,13 @@ func NewEndpointSubsetMapFromList(l *v1.EndpointsList) *EndpointSubsetMap {
 		svc := ""
 		zone := ""
 		port := ""
+		isExternal := false
 		for k, v := range vep.Labels {
 			switch {
 			case k == LabelMeshEndpoint:
+				continue
+			case k == LabelMeshExternal:
+				isExternal = true
 				continue
 			case k == LabelService:
 				svc = v
@@ -224,6 +243,9 @@ func NewEndpointSubsetMapFromList(l *v1.EndpointsList) *EndpointSubsetMap {
 				}
 				ept.ComputeKeyForSortedLabels()
 				subsetKey := ept.BuildSubsetKey()
+				if isExternal {
+					subsetKey = vep.Name
+				}
 				ss, ssFound := m.epSubset[subsetKey]
 				if !ssFound {
 					ss = *NewEndpointSubset(subsetKey, ept.Namespace, svc, zone, port, ept.PodLabels)

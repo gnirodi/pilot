@@ -44,7 +44,7 @@ func (p *Poller) updateError(err error) {
 	p.err = &pe
 }
 
-func (p *Poller) GetZoneStatus() (ZoneDisplayInfo, error) {
+func (p *Poller) GetZoneStatus() (ZoneDisplayInfo, *EndpointSubsetMap, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	countEp := 0
@@ -52,9 +52,9 @@ func (p *Poller) GetZoneStatus() (ZoneDisplayInfo, error) {
 		countEp = len(p.importedSsMap.epSubset)
 	}
 	if p.err != nil {
-		return ZoneDisplayInfo{p.zoneSpec.ZoneName, countEp}, p.err
+		return ZoneDisplayInfo{p.zoneSpec.ZoneName, countEp}, p.importedSsMap, p.err
 	} else {
-		return ZoneDisplayInfo{p.zoneSpec.ZoneName, countEp}, nil
+		return ZoneDisplayInfo{p.zoneSpec.ZoneName, countEp}, p.importedSsMap, nil
 	}
 }
 
@@ -82,7 +82,7 @@ func (p *Poller) Run() {
 	p.err = nil
 }
 
-func (pollers *ExternalZonePollers) Reconcile(ms crv1.MeshSpec, localZone string, currentRunInfo *MeshInfo) {
+func (pollers *ExternalZonePollers) Reconcile(ms crv1.MeshSpec, localZone string, currentRunInfo *MeshInfo) map[string]*EndpointSubsetMap {
 	zonesToKeep := ExternalZonePollers{}
 	zonesToAdd := ExternalZonePollers{}
 	var done struct{}
@@ -115,13 +115,16 @@ func (pollers *ExternalZonePollers) Reconcile(ms crv1.MeshSpec, localZone string
 	}
 
 	// Add back pollers to keep
+	// Get current info from stable zones
+	zoneEpSsMap := make(map[string]*EndpointSubsetMap, len(zonesToKeep))
 	for zoneName, poller := range zonesToKeep {
 		(*pollers)[zoneName] = poller
-		zdi, err := poller.GetZoneStatus()
+		zdi, importedSsMap, err := poller.GetZoneStatus()
 		currentRunInfo.AddZoneDisplayInfo(zdi)
 		if err != nil {
 			currentRunInfo.AddAgentWarning(err.Error())
 		}
+		zoneEpSsMap[zoneName] = importedSsMap
 	}
 
 	// Add new pollers
@@ -130,4 +133,6 @@ func (pollers *ExternalZonePollers) Reconcile(ms crv1.MeshSpec, localZone string
 		go wait.Until(poller.Run, time.Second, poller.stop)
 		glog.Infof("Adding zone '%s' to this mesh sync agent", zoneName)
 	}
+
+	return zoneEpSsMap
 }
