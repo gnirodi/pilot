@@ -5,15 +5,20 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"github.com/golang/glog"
-	"k8s.io/api/core/v1"
+	"net"
 	"sort"
 	"strings"
+
+	"github.com/golang/glog"
+	"k8s.io/api/core/v1"
 )
 
 const (
 	KeySeparator      = "$$"
 	LabelMeshEndpoint = "config.istio.io/mesh.endpoint"
+	LabelMeshExternal = "config.istio.io/mesh.external"
+	LabelMeshDnsSrv   = "config.istio.io/mesh.dns-ep"
+	LabelMeshDnsIp    = "config.istio.io/mesh.dns-ip"
 	LabelZone         = "zone"
 	LabelService      = "service"
 	LabelPort         = "port"
@@ -35,7 +40,7 @@ type Endpoint struct {
 }
 
 // Maps an endpoint key to an Endpoint
-type KeyEndpointMap map[string]Endpoint
+type KeyEndpointMap map[string]*Endpoint
 
 // A mesh EndpointSubset is a unique collection of mesh Endpoints for the tuples of service SrvPort zone and other labels
 // It corresponds to exactly one v1.Endpoint which will typically have only one subset
@@ -58,7 +63,7 @@ type EndpointSubset struct {
 
 // Maps an uncompresssed EndpointSubset name to the corresponding Endpoint subset
 type EndpointSubsetMap struct {
-	epSubset  map[string]EndpointSubset
+	epSubset  map[string]*EndpointSubset
 	epNameSet map[string]bool
 }
 
@@ -93,12 +98,12 @@ func (ep *Endpoint) ComputeKeyForSortedLabels() {
 	ep.Key = strings.Join([]string{ep.Namespace, ep.Service, ep.Zone, ep.PodIP, ep.SrvPort, ep.KeyLabelSuffix}, KeySeparator)
 }
 
-func (ep *Endpoint) DeepCopy() Endpoint {
+func (ep *Endpoint) DeepCopy() *Endpoint {
 	cp := Endpoint{ep.Key, ep.Namespace, ep.Service, ep.Zone, ep.PodIP, ep.SrvPort, ep.Port, ep.KeyLabelSuffix, make(map[string]string, len(ep.PodLabels))}
 	for k, v := range ep.PodLabels {
 		cp.PodLabels[k] = v
 	}
-	return cp
+	return &cp
 }
 
 func (t *Endpoint) BuildSubsetKey() string {
@@ -118,7 +123,7 @@ func (epss *EndpointSubset) DeepCopy() *EndpointSubset {
 	}
 	for keyEp, ep := range epss.KeyEndpointMap {
 		clone.KeyEndpointMap[keyEp] = ep.DeepCopy()
-		epss.HostPortSet[ep.PodIP+fmt.Sprintf(":%d", ep.Port.ContainerPort)] = true
+		epss.HostPortSet[net.JoinHostPort(ep.PodIP, fmt.Sprintf("%d", ep.Port.ContainerPort))] = true
 	}
 	return clone
 }
@@ -165,8 +170,8 @@ func (m *EndpointSubsetMap) AddEndpoint(template *Endpoint, svc string, zone str
 	subsetKey := ep.BuildSubsetKey()
 	ss, ssFound := m.epSubset[subsetKey]
 	if !ssFound {
-		ss = *NewEndpointSubset(subsetKey, ep.Namespace, svc, zone, ep.SrvPort, ep.PodLabels)
-		m.EnsureUniqueName(&ss)
+		ss = NewEndpointSubset(subsetKey, ep.Namespace, svc, zone, ep.SrvPort, ep.PodLabels)
+		m.EnsureUniqueName(ss)
 		m.epSubset[subsetKey] = ss
 		m.epNameSet[ss.Name] = true
 	}
@@ -174,7 +179,7 @@ func (m *EndpointSubsetMap) AddEndpoint(template *Endpoint, svc string, zone str
 }
 
 func NewEndpointSubsetMap() *EndpointSubsetMap {
-	return &EndpointSubsetMap{map[string]EndpointSubset{}, map[string]bool{}}
+	return &EndpointSubsetMap{map[string]*EndpointSubset{}, map[string]bool{}}
 }
 
 func (m *EndpointSubsetMap) EnsureUniqueName(eps *EndpointSubset) {
@@ -244,11 +249,11 @@ func NewEndpointSubsetMapFromList(l *v1.EndpointsList) *EndpointSubsetMap {
 				ept.ComputeKeyForSortedLabels()
 				subsetKey := ept.BuildSubsetKey()
 				if isExternal {
-					subsetKey = vep.Name
+					subsetKey = GetActualDnsEpInfoKey(&vep)
 				}
 				ss, ssFound := m.epSubset[subsetKey]
 				if !ssFound {
-					ss = *NewEndpointSubset(subsetKey, ept.Namespace, svc, zone, port, ept.PodLabels)
+					ss = NewEndpointSubset(subsetKey, ept.Namespace, svc, zone, port, ept.PodLabels)
 					ss.Name = vep.Name
 					m.epSubset[subsetKey] = ss
 				}

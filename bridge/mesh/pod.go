@@ -150,7 +150,7 @@ func (l *PodList) UpdatePod(key string, pod *v1.Pod) {
 			mshpdEpTemplate := epTemplate.DeepCopy()
 			mshpdEpTemplate.SetPort(port)
 			mshpdEpTemplate.ComputeKeyForSortedLabels()
-			mshpd.EpTemplates = append(mshpd.EpTemplates, mshpdEpTemplate)
+			mshpd.EpTemplates = append(mshpd.EpTemplates, *mshpdEpTemplate)
 		}
 
 		// Add the mesh pod to the list

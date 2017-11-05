@@ -13,12 +13,13 @@ import (
 type MeshServiceType int
 
 const (
-	MeshSvcAnnotation   = "config.istio.io/mesh.deployment-selector"
-	MeshAgentAnnotation = "config.istio.io/mesh.agent"
-	UnknownZone         = MeshServiceType(0)
-	MeshService         = MeshServiceType(1)
-	MeshExternalZoneSvc = MeshServiceType(2)
-	NonMeshService      = MeshServiceType(3)
+	MeshSvcAnnotation      = "config.istio.io/mesh.deployment-selector"
+	MeshAgentAnnotation    = "config.istio.io/mesh.agent"
+	MeshExternalAnnotation = "config.istio.io/mesh.external"
+	UnknownZone            = MeshServiceType(0)
+	MeshService            = MeshServiceType(1)
+	MeshExternalZoneSvc    = MeshServiceType(2)
+	NonMeshService         = MeshServiceType(3)
 )
 
 type Service struct {
@@ -63,7 +64,7 @@ func (l *ServiceList) UpdateService(key string, svc *v1.Service) {
 			return
 		}
 		meshAnnot, maFound := svc.Annotations[MeshSvcAnnotation]
-		meshExternalAnnot, maExtSvcFound := svc.Annotations[LabelMeshExternal]
+		meshExternalAnnot, maExtSvcFound := svc.Annotations[MeshExternalAnnotation]
 		if maExtSvcFound && strings.ToLower(meshExternalAnnot) != "true" {
 			maExtSvcFound = false
 		}
@@ -99,7 +100,7 @@ func (l *ServiceList) UpdateService(key string, svc *v1.Service) {
 		case !hasLabels && maFound:
 			svcType = MeshService
 			break
-		case !maFound:
+		case !maFound && !maExtSvcFound:
 			svcType = NonMeshService
 			break
 		case maExtSvcFound:
@@ -166,18 +167,30 @@ func (l *ServiceList) GetAgentVips() map[string]bool {
 	return l.agentVips
 }
 
-// Returns map from service name to service
-func (l *ServiceList) GetServiceMap() map[string]Service {
+// Returns map from service namespace/name to service
+func (l *ServiceList) GetServiceMap() map[string]*Service {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	svcMap := make(map[string]Service, len(l.serviceMap))
+	svcMap := make(map[string]*Service, len(l.serviceMap))
 	for _, v := range l.serviceMap {
 		maLabels := make(map[string]string, len(v.Labels))
 		for l, lv := range v.Labels {
 			maLabels[l] = lv
 		}
-		svc := Service{v.Key, v.Name, v.Namespace, v.SvcType, maLabels, v.agentVip}
-		svcMap[v.Name] = svc
+		svcKey := v.Name
+		if v.Namespace != "" {
+			svcKey = v.Namespace + "/" + v.Name
+		}
+		svc := Service{svcKey, v.Name, v.Namespace, v.SvcType, maLabels, v.agentVip}
+		svcMap[svcKey] = &svc
 	}
 	return svcMap
+}
+
+func NewK8sServiceForDnsResolution(dnsSvc *Service) *v1.Service {
+	svc := v1.Service{}
+	svc.Namespace = dnsSvc.Namespace
+	svc.Name = dnsSvc.Name
+	svc.SetAnnotations(map[string]string{MeshExternalAnnotation: "true"})
+	return &svc
 }
