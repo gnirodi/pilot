@@ -28,6 +28,7 @@ type MeshSyncAgent struct {
 	exportedEp     []byte
 	importedEp     map[string]*EndpointSubsetMap
 	zonePollers    ExternalZonePollers
+	doNoOp         bool
 	mu             sync.RWMutex
 }
 
@@ -82,9 +83,9 @@ func NewDnsEpInfoFromHostPortAndEpSubset(HostPort string, expectedEpSubset *Endp
 	return dnsEpInfo
 }
 
-func NewMeshSyncAgent(clientset *kubernetes.Clientset, ssGetter ServiceEndpointSubsetGetter, globalInfo *MeshInfo) *MeshSyncAgent {
+func NewMeshSyncAgent(clientset *kubernetes.Clientset, ssGetter ServiceEndpointSubsetGetter, globalInfo *MeshInfo, doNoOp bool) *MeshSyncAgent {
 	return &MeshSyncAgent{ssGetter, globalInfo, MeshInfo{}, nil, map[string]bool{}, "", clientset, []byte("{}"),
-		map[string]*EndpointSubsetMap{}, ExternalZonePollers{}, sync.RWMutex{}}
+		map[string]*EndpointSubsetMap{}, ExternalZonePollers{}, doNoOp, sync.RWMutex{}}
 }
 
 func (a *MeshSyncAgent) GetMeshSpec() meshv1.MeshSpec {
@@ -502,6 +503,12 @@ func (a *MeshSyncAgent) Run(stopCh chan struct{}) {
 func (a *MeshSyncAgent) runWorker() {
 	a.currentRunInfo = *NewMeshInfo()
 	defer a.globalInfo.SetStatus(&a.currentRunInfo)
+
+	if a.doNoOp {
+		a.currentRunInfo.SetLabel(ServerStatus, "NoOp")
+		return
+	}
+
 	// Get status of MSA
 	ok := a.GetMeshStatus()
 	if !ok {

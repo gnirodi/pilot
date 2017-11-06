@@ -20,6 +20,7 @@ import (
 var templateDir = flag.String("template_dir", "data/templates", "Root path for HTML templates")
 var httpPort = flag.String("http_port", "8080", "Port for serving http traffic")
 var nsIgnoreRegex = flag.String("namespace_ignore_list", "kube-system", "Regex of namespaces that need to be ignored by this agent")
+var doNoOp = flag.Bool("do_no_op", false, "If true, the agent runs but does nothing.")
 
 func main() {
 	flag.Parse()
@@ -60,7 +61,7 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	agent := mesh.NewMeshSyncAgent(agentClient, sl, mi)
+	agent := mesh.NewMeshSyncAgent(agentClient, sl, mi, *doNoOp)
 	podHandler := controllers.NewPodHandler(pl)
 
 	podClient, err := kubernetes.NewForConfig(config)
