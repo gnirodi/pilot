@@ -29,6 +29,7 @@ type Service struct {
 	SvcType   MeshServiceType
 	Labels    map[string]string
 	agentVip  string
+	Port      *v1.ServicePort
 }
 
 type ServiceList struct {
@@ -141,7 +142,7 @@ func (l *ServiceList) UpdateService(key string, svc *v1.Service) {
 				l.agentVips[msaVip] = true
 			}
 		}
-		ms := Service{key, svc.Name, svc.Namespace, svcType, maLabels, msaVip}
+		ms := Service{key, svc.Name, svc.Namespace, svcType, maLabels, msaVip, nil}
 		l.serviceMap[key] = ms
 	} else {
 		// Deletion event
@@ -181,7 +182,7 @@ func (l *ServiceList) GetServiceMap() map[string]*Service {
 		if v.Namespace != "" {
 			svcKey = v.Namespace + "/" + v.Name
 		}
-		svc := Service{svcKey, v.Name, v.Namespace, v.SvcType, maLabels, v.agentVip}
+		svc := Service{svcKey, v.Name, v.Namespace, v.SvcType, maLabels, v.agentVip, nil}
 		svcMap[svcKey] = &svc
 	}
 	return svcMap
@@ -192,5 +193,7 @@ func NewK8sServiceForDnsResolution(dnsSvc *Service) *v1.Service {
 	svc.Namespace = dnsSvc.Namespace
 	svc.Name = dnsSvc.Name
 	svc.SetAnnotations(map[string]string{MeshExternalAnnotation: "true"})
+	svc.Spec.ClusterIP = "None"
+	svc.Spec.Ports = []v1.ServicePort{*dnsSvc.Port}
 	return &svc
 }

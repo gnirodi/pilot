@@ -26,11 +26,11 @@ html, body {
   padding-left: 20px;
   display: grid;
   max-width: 100%;
-  grid-template-columns: repeat(6, 1fr 3fr);
+  grid-template-columns: repeat(4, 1fr 3fr);
 }
 
 .snm {
-  text-transform: uppercase;
+  // text-transform: uppercase;
   text-align: right;
   color: #426bb3;
   padding-right: 10px;

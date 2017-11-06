@@ -112,11 +112,12 @@ func (t *Endpoint) BuildSubsetKey() string {
 
 func NewEndpointSubset(key, ns, svc, zone, srvPort string, lbls map[string]string) *EndpointSubset {
 	ss := EndpointSubset{key, "", ns, svc, zone, srvPort, lbls, KeyEndpointMap{}, map[string]bool{}}
+	ss.ComputeName()
 	return &ss
 }
 
 func (epss *EndpointSubset) DeepCopy() *EndpointSubset {
-	clone := NewEndpointSubset(epss.Key, epss.Name, epss.Namespace, epss.Service, epss.SrvPort,
+	clone := NewEndpointSubset(epss.Key, epss.Namespace, epss.Service, epss.Zone, epss.SrvPort,
 		make(map[string]string, len(epss.Labels)))
 	for k, v := range epss.Labels {
 		clone.Labels[k] = v
@@ -128,8 +129,23 @@ func (epss *EndpointSubset) DeepCopy() *EndpointSubset {
 	return clone
 }
 
+func (epss *EndpointSubset) GetPort() int32 {
+	var port int32
+	for _, ep := range epss.KeyEndpointMap {
+		port = ep.Port.ContainerPort
+		break
+	}
+	return port
+}
+
 func (es *EndpointSubset) ComputeName() {
 	es.Name = fmt.Sprintf("%x", sha256.Sum256([]byte(es.Key)))
+}
+
+func (epss *EndpointSubset) AddExternalEndpointLabel() {
+	epss.Labels[LabelMeshExternal] = "true"
+	epss.Key = epss.Key + KeySeparator + LabelMeshExternal + "=true"
+	epss.ComputeName()
 }
 
 func (eps *EndpointSubset) ToK8sEndpoints() v1.Endpoints {
@@ -203,8 +219,7 @@ func (m *EndpointSubsetMap) ToJson() []byte {
 	return b
 }
 
-func NewEndpointSubsetMapFromList(l *v1.EndpointsList) *EndpointSubsetMap {
-	m := NewEndpointSubsetMap()
+func BuildEndpointSubsetMapFromList(l *v1.EndpointsList, m *EndpointSubsetMap) {
 	for _, vep := range l.Items {
 		ns := vep.Namespace
 		if ns == "" {
@@ -261,5 +276,4 @@ func NewEndpointSubsetMapFromList(l *v1.EndpointsList) *EndpointSubsetMap {
 			}
 		}
 	}
-	return m
 }

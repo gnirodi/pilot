@@ -18,6 +18,12 @@
   <div class="snm">Pod Namespace:</div> <div class="svl">{{ .MeshInfo.GetPodNamespace }}</div>
   <div class="snm">Pod Name:</div> <div class="svl">{{ .MeshInfo.GetPodName }}</div>
   <div class="snm">Pod IP:</div> <div class="svl">{{ .MeshInfo.GetPodIP }}</div>
+  <div class="snm">Endpoints Created:</div> <div class="svl">{{ .MeshInfo.GetEndpointsCreated }}</div>
+  <div class="snm">Endpoints Updated:</div> <div class="svl">{{ .MeshInfo.GetEndpointsUpdated }}</div>
+  <div class="snm">Endpoints Deleted:</div> <div class="svl">{{ .MeshInfo.GetEndpointsDeleted }}</div>
+  <div class="snm">Endpoints Errors:</div> <div class="svl">{{ .MeshInfo.GetEndpointErrors }}</div>
+  <div class="snm">Started:</div> <div class="svl">{{ .MeshInfo.GetStartTime }}</div>
+  <div class="snm">Updated:</div> <div class="svl">{{ .MeshInfo.GetUpdateTime }}</div>
   <div class="snm"> </div> <div class="svl"> </div>
   <div class="snm">Status:</div>
 {{if eq  .MeshInfo.GetServerStatus "Active" }}
@@ -30,12 +36,6 @@
   <div class="svl-inactive">
 {{end}}
   {{ .MeshInfo.GetServerStatus }}</div>
-  <div class="snm">Started:</div> <div class="svl">{{ .MeshInfo.GetStartTime }}</div>
-  <div class="snm">Updated:</div> <div class="svl">{{ .MeshInfo.GetUpdateTime }}</div>
-  <div class="snm">Endpoints Created:</div> <div class="svl">{{ .MeshInfo.GetEndpointsCreated }}</div>
-  <div class="snm">Endpoints Updated:</div> <div class="svl">{{ .MeshInfo.GetEndpointsUpdated }}</div>
-  <div class="snm">Endpoints Deleted:</div> <div class="svl">{{ .MeshInfo.GetEndpointsDeleted }}</div>
-  <div class="snm">Endpoints Errors:</div> <div class="svl">{{ .MeshInfo.GetEndpointErrors }}</div>
 </div>
 <hr>
 {{if .MeshInfo.GetAgentWarnings}}

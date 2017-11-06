@@ -149,13 +149,18 @@ func (a *MeshSyncAgent) GetMeshStatus() bool {
 func (a *MeshSyncAgent) AddExternalEndpoints(actualMap *EndpointSubsetMap, expectedMap *EndpointSubsetMap) *map[string]*DnsEpInfo {
 	expectedExtServices := map[string]*DnsEpInfo{}
 	for _, zoneEpMap := range a.importedEp {
+		if zoneEpMap == nil {
+			continue
+		}
 		for _, extEpss := range zoneEpMap.epSubset {
 			if extEpss.Name == extEpss.Service {
 				// This is a external service endpoint that was created in another zone, we'll create one for the local zone later.
 				continue
 			}
-			UpdateServiceDnsEndpointMap(&expectedExtServices, actualMap, extEpss)
-			expectedMap.epSubset[extEpss.Key] = extEpss.DeepCopy()
+			zoneLocalExtEpss := extEpss.DeepCopy()
+			zoneLocalExtEpss.AddExternalEndpointLabel()
+			UpdateServiceDnsEndpointMap(&expectedExtServices, actualMap, zoneLocalExtEpss)
+			expectedMap.epSubset[extEpss.Key] = zoneLocalExtEpss
 		}
 	}
 	return &expectedExtServices
@@ -179,7 +184,11 @@ func (a *MeshSyncAgent) AddExpectedDnsEndpoints(expectedExtServices *map[string]
 		}
 		_, svcFound := serviceMap[svcKey]
 		if !svcFound {
-			newSvc := Service{svcKey, dnsEpss.Service, dnsEpss.Namespace, MeshExternalZoneSvc, map[string]string{}, ""}
+			svcPort := new(corev1.ServicePort)
+			svcPort.Name = dnsEpss.SrvPort
+			svcPort.Protocol = corev1.ProtocolTCP
+			svcPort.Port = dnsEpss.GetPort()
+			newSvc := Service{svcKey, dnsEpss.Service, dnsEpss.Namespace, MeshExternalZoneSvc, map[string]string{}, "", svcPort}
 			extSvcCreateSet[svcKey] = &newSvc
 		} else {
 			delete(extSvcDeleteSet, svcKey)
@@ -199,7 +208,6 @@ func UpdateServiceDnsEndpointMap(expectedExtServices *map[string]*DnsEpInfo, act
 		// Check is this service currently has a DnsEndpoint in the actual map
 		// TODO(gnirodi): check key contents work before submit
 		dnsEpss := CreateDnsEpSubsetFromExternalEpSubset(extEpss)
-		var extSvcDnsInfo *DnsEpInfo
 		actualDnsEpss, hasActualDnsEpss := actualMap.epSubset[ExtServiceKey]
 		if !hasActualDnsEpss {
 			// Use extEpss as the best candidate for the Dns Endpoint
@@ -243,24 +251,24 @@ func CreateDnsEpSubsetFromExternalEpSubset(extEpss *EndpointSubset) *EndpointSub
 	DnsHostPort := net.JoinHostPort(firstValue.PodIP, fmt.Sprintf("%d", firstValue.Port.ContainerPort))
 	dnsEpss.HostPortSet = map[string]bool{DnsHostPort: true}
 	dnsEpss.HostPortSet[DnsHostPort] = true
+	dnsEpss.Labels[LabelMeshEndpoint] = "true"
+	dnsEpss.Labels[LabelMeshExternal] = "true"
 	dnsEpss.Labels[LabelMeshDnsSrv] = DnsHostPort
 	dnsEpss.Labels[LabelMeshDnsIp] = firstValue.PodIP
 	return dnsEpss
 }
 
-func (a *MeshSyncAgent) GetActualEndpointSubsets() EndpointSubsetMap {
+func (a *MeshSyncAgent) GetActualEndpointSubsets(endpointLabel string, epssMap *EndpointSubsetMap) {
 	opts := v1.ListOptions{}
-	opts.LabelSelector = strings.Join([]string{LabelMeshEndpoint, "true"}, "=")
-	m := NewEndpointSubsetMap()
+	opts.LabelSelector = strings.Join([]string{endpointLabel, "true"}, "=")
 	l, err := a.clientset.CoreV1().Endpoints("").List(opts)
 	if err != nil {
 		msg := fmt.Sprintf("Error fetching actual endpoints: %v", err)
 		a.currentRunInfo.AddAgentWarning(msg)
 		glog.Error(msg)
 	} else {
-		m = NewEndpointSubsetMapFromList(l)
+		BuildEndpointSubsetMapFromList(l, epssMap)
 	}
-	return *m
 }
 
 func (a *MeshSyncAgent) ExecuteEndpointQuery(query *EndpointDisplayInfo) []EndpointDisplayInfo {
@@ -291,7 +299,8 @@ func (a *MeshSyncAgent) ExecuteEndpointQuery(query *EndpointDisplayInfo) []Endpo
 		a.currentRunInfo.AddAgentWarning(msg)
 		glog.Error(msg)
 	} else {
-		m := NewEndpointSubsetMapFromList(l)
+		m := NewEndpointSubsetMap()
+		BuildEndpointSubsetMapFromList(l, m)
 		groupByKeyMap := map[string]EndpointDisplayInfo{}
 		for _, epss := range m.epSubset {
 			switch {
@@ -461,16 +470,20 @@ func (a *MeshSyncAgent) Reconcile(actual EndpointSubsetMap, expected EndpointSub
 			a.currentRunInfo.IncrementCountEndpointsUpdated(1)
 		}
 	}
-	// Finall create
+	// Finally create
 	for _, epss := range createSet {
 		vep := epss.ToK8sEndpoints()
 		_, err := a.clientset.CoreV1().Endpoints(epss.Namespace).Create(&vep)
 		if err != nil {
 			msg := fmt.Sprintf("Unable to create mesh endpoint. Will try again. Subset:\n%v\nError: %v\n", epss, err)
-			a.currentRunInfo.AddAgentWarning(msg)
+
+			// *******************************************************
+			// TODO - Fix bug causing this warning
+			// a.currentRunInfo.AddAgentWarning(msg)
 
 			glog.Error(msg)
-			a.currentRunInfo.IncrementCountEndpointErrors(1)
+			// a.currentRunInfo.IncrementCountEndpointErrors(1)
+			// *******************************************************
 		} else {
 			if glog.V(2) {
 				glog.Infof("Created mesh endpoint. Subset:\n%v\n", epss)
@@ -516,13 +529,14 @@ func (a *MeshSyncAgent) runWorker() {
 		return
 	}
 	a.currentRunInfo.SetLabel(ServerStatus, "Active")
-	actualMap := a.GetActualEndpointSubsets()
+	actualMap := NewEndpointSubsetMap()
+	a.GetActualEndpointSubsets(LabelMeshEndpoint, actualMap)
 	a.currentRunInfo.AddZoneDisplayInfo(ZoneDisplayInfo{a.localZone, len(actualMap.epSubset)})
 	a.ExportLocalEndpointSubsets(actualMap.ToJson()) // For what it's worth, this is what is available right now
 	expectedMap := a.ssGetter.GetExpectedEndpointSubsets(a.localZone)
 	if glog.V(2) {
 		glog.Infof("\n\nPre reconciliation: Actual ss count: '%d', Expected ss count: '%d'", len(actualMap.epSubset), len(expectedMap.epSubset))
 	}
-	expectedExtServices := a.AddExternalEndpoints(&actualMap, &expectedMap)
-	a.Reconcile(actualMap, expectedMap, expectedExtServices)
+	expectedExtServices := a.AddExternalEndpoints(actualMap, &expectedMap)
+	a.Reconcile(*actualMap, expectedMap, expectedExtServices)
 }
