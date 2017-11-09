@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: bridge-container
-          image: gcr.io/istio-hybrid/bridge:live
+          image: gcr.io/istio-multizone-hybrid/bridge:live
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

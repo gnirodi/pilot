@@ -1,0 +1,38 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: product
+  # Service has no selectors
+  #
+  # Annotations for Istio Mesh
+  annotations:
+    config.istio.io/mesh.deployment-selector: |
+      {"app":"product"}
+spec:
+  # Service is HEADLESS
+  clusterIP: None
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8080
+    targetPort: 8080
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: details
+  # Service has no selectors
+  #
+  # Annotations for Istio Mesh
+  annotations:
+    config.istio.io/mesh.deployment-selector: |
+      {"app":"details"}
+spec:
+  # Service is HEADLESS
+  clusterIP: None
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8080
+    targetPort: 8080
+---
