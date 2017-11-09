@@ -1,5 +1,9 @@
 #!/bin/bash
-echo "Hope you've already run: dep ensure"
+echo "============================================"
+echo "Hope you've already run: glide update"
+echo "============================================"
+echo
+echo
 pushd istio.io/pilot/bridge
 go build istio.io/pilot/bridge
 docker build -t bridge .
