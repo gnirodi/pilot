@@ -18,7 +18,15 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-const MeshResourcePlural = "meshs"
+const (
+	MeshResourceName     = "meshs.config.istio.io"
+	MeshSpecGroup        = "config.istio.io"
+	MeshSpecVersion      = "v1"
+	MeshResourcePlural   = "meshs"
+	MeshResourceSingular = "mesh"
+	MeshResourceKind     = "Mesh"
+	MeshShortName        = "me"
+)
 
 // +genclient
 // +genclient:noStatus
@@ -34,8 +42,10 @@ type Mesh struct {
 
 // +k8s:deepcopy-gen=true,register=k8s.io/apimachinery/pkg/runtime.Object
 type ZoneSpec struct {
-	ZoneName         string `json:"zoneName"`
-	MeshSyncAgentVip string `json:"meshSyncAgentVip"`
+	metav1.ObjectMeta `json:"metadata"`
+	ZoneName          string `json:"zoneName"`
+	MeshSyncAgentVip  string `json:"meshSyncAgentVip"`
+	Activate          bool   `json:"activate"`
 }
 
 // +k8s:deepcopy-gen=true,register=k8s.io/apimachinery/pkg/runtime.Object

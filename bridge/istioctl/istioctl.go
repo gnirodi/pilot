@@ -1,6 +1,8 @@
 package main
 
 import (
+	"flag"
+
 	"github.com/spf13/cobra"
 	"istio.io/pilot/bridge/istioctl/cmd"
 )
@@ -8,9 +10,10 @@ import (
 func main() {
 
 	var rootCmd = &cobra.Command{
-		Use:   "istioctl [view]",
+		Use:   "istioctl [update-mesh]",
 		Short: "Istioctl is a tool for managinging multi-cluster Istio meshes",
 	}
-	rootCmd.AddCommand(cmd.NewViewCommand())
+	rootCmd.AddCommand(cmd.NewUpdateMeshCommand())
+	flag.Parse()
 	rootCmd.Execute()
 }

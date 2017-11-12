@@ -15,6 +15,10 @@ import:
   - pkg/fields
   - pkg/util/runtime
   - pkg/util/wait
+  - pkg/util/yaml
+- package: k8s.io/apiextensions-apiserver
+  subpackages:
+  - pkg/client/clientset/clientset
 - package: k8s.io/client-go
   version: ^5.0.0
   subpackages:

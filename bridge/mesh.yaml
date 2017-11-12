@@ -1,0 +1,17 @@
+apiVersion: "config.istio.io/v1"
+kind: Mesh
+metadata:
+  name: demo-mesh
+spec:
+  zones:
+  - zoneName: zone-1 
+    meshSyncAgentVip: 10.138.10.2:8080
+    activate: true
+    metadata:
+      name: gke_istio-multizone-hybrid_us-west1-a_zone-1
+  - zoneName: zone-2
+    meshSyncAgentVip: 10.138.10.4:8080
+    activate: true
+    metadata:
+      name: gke_istio-multizone-hybrid_us-west1-a_zone-2
+    
