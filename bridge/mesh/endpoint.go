@@ -178,6 +178,14 @@ func (eps *EndpointSubset) ToK8sEndpoints() v1.Endpoints {
 	return vep
 }
 
+func NewEndpointSubsetMap() *EndpointSubsetMap {
+	return &EndpointSubsetMap{map[string]*EndpointSubset{}, map[string]bool{}}
+}
+
+func (m *EndpointSubsetMap) GetNamedSubsets() map[string]*EndpointSubset {
+	return m.epSubset
+}
+
 func (m *EndpointSubsetMap) AddEndpoint(template *Endpoint, svc string, zone string) {
 	ep := template.DeepCopy()
 	ep.Service = svc
@@ -192,10 +200,6 @@ func (m *EndpointSubsetMap) AddEndpoint(template *Endpoint, svc string, zone str
 		m.epNameSet[ss.Name] = true
 	}
 	ss.KeyEndpointMap[ep.Key] = ep
-}
-
-func NewEndpointSubsetMap() *EndpointSubsetMap {
-	return &EndpointSubsetMap{map[string]*EndpointSubset{}, map[string]bool{}}
 }
 
 func (m *EndpointSubsetMap) EnsureUniqueName(eps *EndpointSubset) {

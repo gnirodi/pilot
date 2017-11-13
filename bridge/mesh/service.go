@@ -137,7 +137,7 @@ func (l *ServiceList) UpdateService(key string, svc *v1.Service) {
 		msaAnnot, msaAnnotFound := svc.Annotations[MeshAgentAnnotation]
 		msaVip := ""
 		if msaAnnotFound && strings.ToLower(msaAnnot) == "true" {
-			msaVip = svc.Spec.ClusterIP
+			msaVip = svc.Spec.LoadBalancerIP
 			if len(msaVip) > 0 {
 				l.agentVips[msaVip] = true
 			}
