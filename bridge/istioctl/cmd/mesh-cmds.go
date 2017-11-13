@@ -139,7 +139,7 @@ func UpdateMesh(cmd *cobra.Command, args []string) error {
 		}
 		break
 	case !anyNeedUpdate:
-		fmt.Println("\n\nAll clusters provided in --clusters '%s' are up to date", clusters)
+		fmt.Printf("\n\nAll clusters provided in --clusters '%s' are up to date\n", clusters)
 		PrintMeshStatus(ctxToMeshStatus, ctxToZSpecMap)
 		return nil
 	}
