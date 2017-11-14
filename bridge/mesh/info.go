@@ -32,12 +32,20 @@ type MeshInfo struct {
 
 type ZoneDisplayInfo struct {
 	ZoneName       string
+	CountServices  int
 	CountEndpoints int
 }
 
-func NewZoneDisplayInfo(z string) *ZoneDisplayInfo {
-	zdi := ZoneDisplayInfo{z, 0}
-	return &zdi
+func NewZoneDisplayInfo(z string, epssMap *EndpointSubsetMap) *ZoneDisplayInfo {
+	countEp := 0
+	svcSet := map[string]bool{}
+	if epssMap != nil {
+		for _, epss := range epssMap.epSubset {
+			svcSet[epss.Namespace+"/"+epss.Service] = true
+			countEp = countEp + len(epss.KeyEndpointMap)
+		}
+	}
+	return &ZoneDisplayInfo{z, len(svcSet), countEp}
 }
 
 func NewMeshInfo() *MeshInfo {

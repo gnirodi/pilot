@@ -77,12 +77,19 @@ Server Healthz Response from: {{.TargetUrl}}
 {{if .MeshInfo.GetZoneDisplayInfo }}
 <div class="istio">
 <table>
-<thead>
-  <tr> <th>Zone Name</th> <th>Endpoints</th> </tr>
+<thead class="zonelist">
+  <tr> 
+    <th>Zone Name</th> 
+    <th>Services</th>
+    <th>Endpoints</th> 
+  </tr>
 </thead>
-<tbody>
+<tbody class="zonelist">
 {{range $index, $element := .MeshInfo.GetZoneDisplayInfo}}
-  <tr> <td> <a href="/index.html?zone={{$element.ZoneName}}&refresh={{if $.Refresh}}1{{end}}&">{{$element.ZoneName}}</a></td> <td> {{$element.CountEndpoints}} </td> </tr>
+  <tr> <td> <a href="/index.html?zone={{$element.ZoneName}}&refresh={{if $.Refresh}}1{{end}}&">{{$element.ZoneName}}</a></td>
+       <td> {{$element.CountServices}} </td>
+       <td> {{$element.CountEndpoints}} </td>
+  </tr>
 {{end}}
 </tbody>
 </table>
@@ -95,35 +102,37 @@ Server Healthz Response from: {{.TargetUrl}}
 *****************************************************
 */}}
 {{if .QueryResult }}
-<div class="istio">
-<table>
-<thead class="details">
-  <tr>
-{{if .QueryParms.Zone}}
-  <th>Namespace</th> <th>Service</th> <th>Endpoints</th> <th>{{if and .QueryParms.Service .QueryParms.AllLabels}}Labels{{else}}Count{{end}}</th>
-{{else if .QueryParms.Service}}
-  <th>Zone</th> <th>Namespace</th> <th>Endpoints</th> <th> </th>
-{{end}}
-  </tr>
-</thead>
-<tbody class="details">
-{{range $index, $element := .QueryResult}}
-  <tr>
-{{if $.QueryParms.Zone}}
-  <td>{{$element.Namespace}}</td>
-  <td>{{$element.Service}}</td>
-  <td>{{range $index, $endpoint := $element.HostPort}}{{if le $index 2}}{{if gt $index 1}},{{end}}<a href="/index.html?target={{$endpoint}}">{{$endpoint}}</a>{{end}}{{if eq $index 3}}...{{end}}{{end}}</td>
-  <td>{{if and $.QueryParms.Service $.QueryParms.AllLabels}}{{$element.CsvLabels}}{{else}}<a href="/index.html?zone={{$element.Zone}}&svc={{$element.Service}}&ns={{$element.Namespace}}&refresh={{if $.Refresh}}1{{end}}">{{len $element.HostPort}}</a>{{end}}</td>
-{{else if $.QueryParms.Service}}
-  <td>{{$element.Zone}}</td>
-  <td>{{$element.Namespace}}</td>
-  <td>{{range $epidx, $endpoint := $element.HostPort}}{{if le $epidx 2}}{{if gt $epidx 1}},{{end}}<a href="/index.html?target={{$endpoint}}">{{end}}{{if eq $epidx 3}}...{{end}}{{end}}</td>
-  <td><a href="/index.html?svc={{$.QueryParms.Service}}&zone={{$element.Zone}}&ns={{$element.Namespace}}&refresh={{if $.Refresh}}1{{end}}">{{len $element.HostPort}}</a></td>
-{{end}}
-  </tr>
-{{end}}
-</tbody>
-</table>  
+  <div class="istio">
+  <table>
+  <thead class="details">
+    <tr>
+      {{if .QueryParms.Zone}}
+        <th>Namespace</th> <th>Service</th> <th>Zone</th> <th>Endpoints</th> <th>{{if and .QueryParms.Service .QueryParms.AllLabels}}Labels{{else}}Count{{end}}</th>
+      {{else if .QueryParms.Service}}
+        <th>Namespace</th> <th>Service</th> <th>Zone</th> <th>Endpoints</th> <th> </th>
+      {{end}}
+    </tr>
+  </thead>
+  <tbody class="details">
+    {{range $index, $element := .QueryResult}}
+      <tr>
+        {{if $.QueryParms.Zone}}
+          <td>{{$element.Namespace}}</td>
+          <td><a href="/index.html?zone={{$element.Zone}}&svc={{$element.Service}}&ns={{$element.Namespace}}&refresh={{if $.Refresh}}1{{end}}">{{$element.Service}}</a></td>
+          <td>{{$element.Zone}}</td>
+          <td>{{range $index, $endpoint := $element.HostPort}}{{if le $index 1}}{{if gt $index 0}},&nbsp;{{end}}<a href="/index.html?targetserver={{$endpoint}}">{{$endpoint}}</a>{{end}}{{if eq $index 2}}...{{end}}{{end}}</td>
+          <td>{{if and $.QueryParms.Service $.QueryParms.AllLabels}}{{$element.CsvLabels}}{{else}}{{len $element.HostPort}}{{end}}</td>
+        {{else if $.QueryParms.Service}}
+          <td>{{$element.Namespace}}</td>
+          <td><a href="/index.html?zone={{$element.Zone}}&svc={{$element.Service}}&ns={{$element.Namespace}}&refresh={{if $.Refresh}}1{{end}}">{{$element.Service}}</a></td>
+          <td>{{$element.Zone}}</td>
+          <td>{{range $epidx, $endpoint := $element.HostPort}}{{if le $epidx 1}}{{if gt $epidx 0}},&nbsp;{{end}}<a href="/index.html?targetserver={{$endpoint}}">{{end}}{{if eq $epidx 2}}&nbsp;...{{end}}{{end}}</td>
+          <td>{{len $element.HostPort}}</td>
+        {{end}}
+      </tr>
+    {{end}}
+  </tbody>
+  </table>  
 </div>
 <hr>
 {{end}}

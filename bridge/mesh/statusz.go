@@ -15,11 +15,11 @@ type StatuszInfo struct {
 	TargetUrl             *string
 	TargetHealthzResponse *string
 	QueryParms            EndpointDisplayInfo
-	QueryResult           []EndpointDisplayInfo
+	QueryResult           []*EndpointDisplayInfo
 }
 
 func NewStatuszInfo(mi *MeshInfo) *StatuszInfo {
-	csi := StatuszInfo{mi, nil, nil, nil, EndpointDisplayInfo{}, []EndpointDisplayInfo{}}
+	csi := StatuszInfo{mi, nil, nil, nil, EndpointDisplayInfo{}, []*EndpointDisplayInfo{}}
 	return &csi
 }
 

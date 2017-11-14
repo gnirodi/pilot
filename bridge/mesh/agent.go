@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -39,8 +38,8 @@ type ServiceEndpointSubsetGetter interface {
 }
 
 type EndpointDisplayInfo struct {
-	Service   *string
 	Namespace *string
+	Service   *string
 	Zone      *string
 	CsvLabels *string
 	AllLabels *string
@@ -271,93 +270,80 @@ func (a *MeshSyncAgent) GetActualEndpointSubsets(endpointLabel string, epssMap *
 	}
 }
 
-func (a *MeshSyncAgent) ExecuteEndpointQuery(query *EndpointDisplayInfo) []EndpointDisplayInfo {
-	res := []EndpointDisplayInfo{}
+func (a *MeshSyncAgent) ExecuteEndpointQuery(query *EndpointDisplayInfo) []*EndpointDisplayInfo {
+	res := []*EndpointDisplayInfo{}
+	hasLabels := query.CsvLabels != nil
 	hasZone := query.Zone != nil
 	hasService := query.Service != nil
 	hasNamespace := query.Namespace != nil
-	hasLabels := query.CsvLabels != nil
-	labels := []string{LabelMeshEndpoint + "=true"}
+	labels := map[string]string{}
+	labels[LabelMeshEndpoint] = "true"
 	if hasLabels {
-		labels = strings.Split(*query.CsvLabels, ",")
+		nvPairs := strings.Split(*query.CsvLabels, ",")
+		for _, nvPair := range nvPairs {
+			nameValues := strings.Split(nvPair, "=")
+			if len(nameValues) != 2 {
+				msg := fmt.Sprintf("Comma separated labels should be in the form name1=value1,name2=value2,...Found :'%s'", *query.CsvLabels)
+				a.currentRunInfo.AddAgentWarning(msg)
+				glog.Error(msg)
+				return res
+			}
+			labels[nameValues[0]] = nameValues[1]
+		}
 	}
 	if hasZone {
-		labels = append(labels, LabelZone+"="+*query.Zone)
-	}
-	if hasService {
-		labels = append(labels, LabelService+"="+*query.Service)
+		labels[LabelZone] = *query.Zone
 	}
 	Namespace := ""
 	if hasNamespace {
 		Namespace = *query.Namespace
 	}
-	opts := v1.ListOptions{}
-	opts.LabelSelector = strings.Join(labels, ",")
-	l, err := a.clientset.CoreV1().Endpoints(Namespace).List(opts)
+	Service := ""
+	if hasService {
+		Service = *query.Service
+	}
+	meshResolver := NewMeshResolver(a.clientset)
+	nsSvcEndpoints, err := meshResolver.LookupSvcEndpointsBySvcName(Namespace, Service, labels)
 	if err != nil {
 		msg := fmt.Sprintf("Error fetching endpoints: %s", err.Error())
 		a.currentRunInfo.AddAgentWarning(msg)
 		glog.Error(msg)
-	} else {
-		m := NewEndpointSubsetMap()
-		BuildEndpointSubsetMapFromList(l, m)
-		groupByKeyMap := map[string]EndpointDisplayInfo{}
-		for _, epss := range m.epSubset {
-			switch {
-			case hasZone && !hasService:
-				// Group by service
-				AddEndpointSubset(groupByKeyMap, epss.Service, epss)
-				break
-			case hasService && !hasZone:
-				// Group by zone
-				AddEndpointSubset(groupByKeyMap, epss.Zone, epss)
-				break
-			case hasService && hasZone:
-				// No grouping
-				AddEndpointSubset(groupByKeyMap, "", epss)
-				break
+		return res
+	}
+	sortedNs := nsSvcEndpoints.GetSortedNamespaces()
+	for _, ns := range sortedNs {
+		svcZoneEps, _ := nsSvcEndpoints[ns]
+		sortedSvc := svcZoneEps.GetSortedServices()
+		for _, svc := range sortedSvc {
+			zoneEps, _ := svcZoneEps[svc]
+			sortedZones := zoneEps.GetSortedZones()
+			for _, zone := range sortedZones {
+				isFirstZoneRow := true
+				epssList, _ := zoneEps[zone]
+				var zoneDispEpInfo *EndpointDisplayInfo
+				for _, epss := range epssList {
+					for _, ep := range epss.KeyEndpointMap {
+						if isFirstZoneRow || (hasZone && hasService) {
+							zoneDispEpInfo = &EndpointDisplayInfo{&epss.Namespace, &epss.Service, &epss.Zone, nil, nil, []string{}}
+							res = append(res, zoneDispEpInfo)
+						}
+						hostport := net.JoinHostPort(ep.PodIP, fmt.Sprintf("%d", ep.Port.ContainerPort))
+						zoneDispEpInfo.HostPort = append(zoneDispEpInfo.HostPort, hostport)
+						if hasZone && hasService {
+							labels := []string{}
+							for k, v := range ep.PodLabels {
+								labels = append(labels, strings.Join([]string{k, v}, "="))
+							}
+							podLabels := strings.Join(labels, ",")
+							zoneDispEpInfo.CsvLabels = &podLabels
+						}
+						isFirstZoneRow = false
+					}
+				}
 			}
-		}
-		orderedKeys := make([]string, len(groupByKeyMap))
-		ki := 0
-		for k, _ := range groupByKeyMap {
-			orderedKeys[ki] = k
-			ki++
-		}
-		sort.Strings(orderedKeys)
-		for _, k := range orderedKeys {
-			v, _ := groupByKeyMap[k]
-			res = append(res, v)
 		}
 	}
 	return res
-}
-
-func AddEndpointSubset(groupByKeyMap map[string]EndpointDisplayInfo, key string, epss *EndpointSubset) {
-	if key == "" {
-		for _, ep := range epss.KeyEndpointMap {
-			epdi := EndpointDisplayInfo{&epss.Service, &epss.Namespace, &epss.Zone, nil, nil,
-				[]string{ep.PodIP + ":" + fmt.Sprintf("%d", ep.Port.ContainerPort)}}
-			labels := []string{}
-			for k, v := range ep.PodLabels {
-				labels = append(labels, strings.Join([]string{k, v}, "="))
-			}
-			podLabels := strings.Join(labels, ",")
-			epdi.CsvLabels = &podLabels
-			groupByKeyMap[fmt.Sprintf("%d", len(groupByKeyMap))] = epdi
-		}
-		return
-	}
-	// Needs grouping
-	epdi, found := groupByKeyMap[key]
-	if !found {
-		epdi = EndpointDisplayInfo{&epss.Service, &epss.Namespace, &epss.Zone, nil, nil, []string{}}
-	}
-	for _, ep := range epss.KeyEndpointMap {
-		hostport := net.JoinHostPort(ep.PodIP, fmt.Sprintf("%d", ep.Port.ContainerPort))
-		epdi.HostPort = append(epdi.HostPort, hostport)
-	}
-	groupByKeyMap[key] = epdi
 }
 
 func (a *MeshSyncAgent) ReconcileExtServiceList(dnsSvcCreateSet map[string]*Service, dnsSvcDeleteSet map[string]*Service) {
@@ -531,7 +517,7 @@ func (a *MeshSyncAgent) runWorker() {
 	a.currentRunInfo.SetLabel(ServerStatus, "Active")
 	actualMap := NewEndpointSubsetMap()
 	a.GetActualEndpointSubsets(LabelMeshEndpoint, actualMap)
-	a.currentRunInfo.AddZoneDisplayInfo(ZoneDisplayInfo{a.localZone, len(actualMap.epSubset)})
+	a.currentRunInfo.AddZoneDisplayInfo(*NewZoneDisplayInfo(a.localZone, actualMap))
 	a.ExportLocalEndpointSubsets(actualMap.ToJson()) // For what it's worth, this is what is available right now
 	expectedMap := a.ssGetter.GetExpectedEndpointSubsets(a.localZone)
 	if glog.V(2) {

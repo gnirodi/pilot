@@ -88,39 +88,55 @@ tr {
    border-bottom: 1px solid #c0c0c0;
 }
 
-thead th:nth-child(1) {
+thead.zonelist th:nth-child(1) {
   padding: 8px;
   font-size: 0.9em;
-  width: 400px;
-}
-
-thead th:nth-child(2) {
-  padding: 10px;
-  font-size: 0.9em;
-  color: #000000;
   width: 100px;
 }
 
-tbody td:nth-child(1) {
+thead.zonelist th:nth-child(2) {
+  padding: 8px;
+  color: #000000;
+  font-size: 0.9em;
+  width: 100px;
+  text-align: center;
+}
+
+thead.zonelist th:nth-child(3) {
+  padding: 8px;
+  color: #000000;
+  font-size: 0.9em;
+  width: 100px;
+  text-align: center;
+}
+
+tbody.zonelist td:nth-child(1) {
   padding: 8px;
   font-size: 0.9em;
   padding-left: 20px;
   color: #000000;
-  width: 400px;
+  width: 100px;
 }
 
-tbody td:nth-child(2) {
+tbody.zonelist td:nth-child(2) {
   padding: 8px;
   font-size: 0.9em;
-  text-align: center;
   color: #000000;
   width: 100px;
+  text-align: center;
+}
+
+tbody.zonelist td:nth-child(3) {
+  padding: 8px;
+  font-size: 0.9em;
+  color: #000000;
+  width: 100px;
+  text-align: center;
 }
 
 tbody tr:hover {
   background: #eff4fd;
 }
-
 
 .logo {
   position: absolute;
@@ -159,7 +175,6 @@ thead.details th:nth-child(2) {
   text-align: left;
   padding: 10px;
   font-size: 0.9em;
-  color: #000000;
   width: 300px;
 }
 
@@ -173,6 +188,14 @@ thead.details th:nth-child(3) {
 
 thead.details th:nth-child(4) {
   text-align: left;
+  padding: 10px;
+  font-size: 0.9em;
+  color: #000000;
+  width: 300px;
+}
+
+thead.details th:nth-child(5) {
+  text-align: center;
   padding: 10px;
   font-size: 0.9em;
   color: #000000;
@@ -191,7 +214,6 @@ tbody.details td:nth-child(2) {
   text-align: left;
   padding: 10px;
   font-size: 0.9em;
-  color: #000000;
   width: 300px;
 }
 
@@ -205,6 +227,14 @@ tbody.details td:nth-child(3) {
 
 tbody.details td:nth-child(4) {
   text-align: left;
+  padding: 10px;
+  font-size: 0.9em;
+  color: #000000;
+  width: 300px;
+}
+
+tbody.details td:nth-child(5) {
+  text-align: center;
   padding: 10px;
   font-size: 0.9em;
   color: #000000;

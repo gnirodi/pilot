@@ -28,34 +28,33 @@ func NewPoller(zone crv1.ZoneSpec) *Poller {
 }
 
 type PollerError struct {
-	zoneName string
-	err      error
+	errMsg string
+}
+
+func NewPollerError(zoneName string, err error) *PollerError {
+	return &PollerError{"Error fetching endpoints from zone " + zoneName + " Error: " + err.Error()}
 }
 
 func (e *PollerError) Error() string {
-	return "Error fetching endpoints from zone " + e.zoneName + " Error: " + e.err.Error()
+	return e.errMsg
 }
 
 func (p *Poller) updateError(err error) {
-	pe := PollerError{p.zoneSpec.ZoneName, err}
-	glog.Error(pe.Error())
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.err = &pe
+	pe := NewPollerError(p.zoneSpec.ZoneName, err)
+	glog.Error(pe.Error())
+	p.err = pe
 }
 
 func (p *Poller) GetZoneStatus() (ZoneDisplayInfo, *EndpointSubsetMap, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	countEp := 0
-	if p.importedSsMap != nil {
-		countEp = len(p.importedSsMap.epSubset)
-	}
+	zi := NewZoneDisplayInfo(p.zoneSpec.ZoneName, p.importedSsMap)
 	if p.err != nil {
-		return ZoneDisplayInfo{p.zoneSpec.ZoneName, countEp}, p.importedSsMap, p.err
-	} else {
-		return ZoneDisplayInfo{p.zoneSpec.ZoneName, countEp}, p.importedSsMap, nil
+		return *zi, p.importedSsMap, &PollerError{p.err.errMsg}
 	}
+	return *zi, p.importedSsMap, nil
 }
 
 func (p *Poller) Run() {
