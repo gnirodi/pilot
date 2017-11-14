@@ -123,7 +123,7 @@ func (a *MeshSyncAgent) GetMeshStatus() bool {
 	for _, z := range ms.Zones {
 		host, _, err := net.SplitHostPort(z.MeshSyncAgentVip)
 		if err != nil {
-			msg := fmt.Sprintf("Zone '%s' is misconfigured. Illegal host port spec '%s' error: %v", z.ZoneName, z.MeshSyncAgentVip, err)
+			msg := fmt.Sprintf("Zone '%s' is misconfigured. Illegal host port spec '%s' error: %s", z.ZoneName, z.MeshSyncAgentVip, err.Error())
 			a.currentRunInfo.AddAgentWarning(msg)
 			glog.Error(msg)
 			continue
@@ -263,7 +263,7 @@ func (a *MeshSyncAgent) GetActualEndpointSubsets(endpointLabel string, epssMap *
 	opts.LabelSelector = strings.Join([]string{endpointLabel, "true"}, "=")
 	l, err := a.clientset.CoreV1().Endpoints("").List(opts)
 	if err != nil {
-		msg := fmt.Sprintf("Error fetching actual endpoints: %v", err)
+		msg := fmt.Sprintf("Error fetching actual endpoints: %s", err.Error())
 		a.currentRunInfo.AddAgentWarning(msg)
 		glog.Error(msg)
 	} else {
@@ -373,7 +373,7 @@ func (a *MeshSyncAgent) ReconcileExtServiceList(dnsSvcCreateSet map[string]*Serv
 	for _, svc := range dnsSvcDeleteSet {
 		err := a.clientset.CoreV1().Services(svc.Namespace).Delete(svc.Name, &v1.DeleteOptions{})
 		if err != nil {
-			msg := fmt.Sprintf("Unable to delete mesh service. This may result in incorrect service entries for DNS. Will try again. Subset:\n%v\nError: %v\n", svc, err)
+			msg := fmt.Sprintf("Unable to delete mesh service. This may result in incorrect service entries for DNS. Will try again. Subset:\n%s\nError: %s\n", svc.Name, err.Error())
 			a.currentRunInfo.AddAgentWarning(msg)
 			glog.Error(msg)
 		}
@@ -382,7 +382,7 @@ func (a *MeshSyncAgent) ReconcileExtServiceList(dnsSvcCreateSet map[string]*Serv
 		corev1Svc := NewK8sServiceForDnsResolution(svc)
 		_, err := a.clientset.CoreV1().Services(svc.Namespace).Create(corev1Svc)
 		if err != nil {
-			msg := fmt.Sprintf("Unable to create mesh service. This may result in incorrect service entries for DNS. Will try again. Subset:\n%v\nError: %v\n", svc, err)
+			msg := fmt.Sprintf("Unable to create mesh service. This may result in incorrect service entries for DNS. Will try again. Subset:\n%s\nError: %s\n", svc.Name, err.Error())
 			a.currentRunInfo.AddAgentWarning(msg)
 			glog.Error(msg)
 		}
@@ -451,13 +451,13 @@ func (a *MeshSyncAgent) Reconcile(actual EndpointSubsetMap, expected EndpointSub
 	for _, epss := range deleteSet {
 		err := a.clientset.CoreV1().Endpoints(epss.Namespace).Delete(epss.Name, &v1.DeleteOptions{})
 		if err != nil {
-			msg := fmt.Sprintf("Unable to delete mesh endpoint. Will try again. Subset:\n%v\nError: %v\n", epss, err)
+			msg := fmt.Sprintf("Unable to delete mesh endpoint. Will try again. Subset:\n%s\nError: %s\n", epss.Name, err.Error())
 			a.currentRunInfo.AddAgentWarning(msg)
 			glog.Error(msg)
 			a.currentRunInfo.IncrementCountEndpointErrors(1)
 		} else {
 			if glog.V(2) {
-				glog.Infof("Deleted mesh endpoint. Subset\n%v\n", epss)
+				glog.Infof("Deleted mesh endpoint. Subset\n%s\n", epss.Name)
 			}
 			a.currentRunInfo.IncrementCountEndpointsDeleted(1)
 		}
@@ -465,18 +465,27 @@ func (a *MeshSyncAgent) Reconcile(actual EndpointSubsetMap, expected EndpointSub
 	// Then update
 	for _, epss := range updateSet {
 		vep := epss.ToK8sEndpoints()
-		_, err := a.clientset.CoreV1().Endpoints(epss.Namespace).Update(&vep)
+		existingvep, err := a.clientset.CoreV1().Endpoints(vep.Namespace).Get(vep.Name, v1.GetOptions{})
 		if err != nil {
-			msg := fmt.Sprintf("Unable to update mesh endpoint. Will try again. Subset:\n%v\nError: %v\n", epss, err)
+			msg := fmt.Sprintf("Unable to update mesh endpoint. Cannot ascertain Resource Version. Will try again. Subset:\n%s\nError: %s\n", epss.Name, err.Error())
 			a.currentRunInfo.AddAgentWarning(msg)
-
 			glog.Error(msg)
 			a.currentRunInfo.IncrementCountEndpointErrors(1)
 		} else {
-			if glog.V(2) {
-				glog.Infof("Updated mesh endpoint. Subset:\n%v\n", epss)
+			vep.ResourceVersion = existingvep.ResourceVersion
+			_, err := a.clientset.CoreV1().Endpoints(epss.Namespace).Update(&vep)
+			if err != nil {
+				msg := fmt.Sprintf("Unable to update mesh endpoint. Will try again. Subset:\n%s\nError: %s\n", epss.Name, err.Error())
+				a.currentRunInfo.AddAgentWarning(msg)
+
+				glog.Error(msg)
+				a.currentRunInfo.IncrementCountEndpointErrors(1)
+			} else {
+				if glog.V(2) {
+					glog.Infof("Updated mesh endpoint. Subset\n%s\n", epss.Name)
+				}
+				a.currentRunInfo.IncrementCountEndpointsUpdated(1)
 			}
-			a.currentRunInfo.IncrementCountEndpointsUpdated(1)
 		}
 	}
 	// Finally create
@@ -484,7 +493,7 @@ func (a *MeshSyncAgent) Reconcile(actual EndpointSubsetMap, expected EndpointSub
 		vep := epss.ToK8sEndpoints()
 		_, err := a.clientset.CoreV1().Endpoints(epss.Namespace).Create(&vep)
 		if err != nil {
-			msg := fmt.Sprintf("Unable to create mesh endpoint. Will try again. Subset:\n%v\nError: %v\n", epss, err)
+			msg := fmt.Sprintf("Unable to create mesh endpoint. Will try again. Subset:\n%s\nError: %s\n", epss.Name, err.Error())
 
 			// *******************************************************
 			// TODO - Fix bug causing this warning
@@ -495,7 +504,7 @@ func (a *MeshSyncAgent) Reconcile(actual EndpointSubsetMap, expected EndpointSub
 			// *******************************************************
 		} else {
 			if glog.V(2) {
-				glog.Infof("Created mesh endpoint. Subset:\n%v\n", epss)
+				glog.Infof("Created mesh endpoint. Subset\n%s\n", epss.Name)
 			}
 			a.currentRunInfo.IncrementCountEndpointsCreated(1)
 		}
@@ -541,8 +550,8 @@ func (a *MeshSyncAgent) runWorker() {
 	actualMap := NewEndpointSubsetMap()
 	a.GetActualEndpointSubsets(LabelMeshEndpoint, actualMap)
 	a.currentRunInfo.AddZoneDisplayInfo(*NewZoneDisplayInfo(a.localZone, actualMap))
-	a.ExportLocalEndpointSubsets(actualMap.ToJson()) // For what it's worth, this is what is available right now
 	expectedMap := a.ssGetter.GetExpectedEndpointSubsets(a.localZone)
+	a.ExportLocalEndpointSubsets(expectedMap.ToJson()) // For what it's worth, this is what is available right now
 	if glog.V(2) {
 		glog.Infof("\n\nPre reconciliation: Actual ss count: '%d', Expected ss count: '%d'", len(actualMap.epSubset), len(expectedMap.epSubset))
 	}

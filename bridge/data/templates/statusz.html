@@ -137,19 +137,11 @@ DNS lookup response for {{.QueryParms.DnsName}}: {{.ResolvedIP}}
   <tbody class="details">
     {{range $index, $element := .QueryResult}}
       <tr>
-        {{if $.QueryParms.Zone}}
           <td>{{$element.Namespace}}</td>
-          <td><a href="/index.html?zone={{$element.Zone}}&svc={{$element.Service}}&ns={{$element.Namespace}}&refresh={{if $.Refresh}}1{{end}}">{{$element.Service}}</a></td>
-          <td>{{$element.Zone}}</td>
+          <td><a href="/index.html?&svc={{$element.Service}}&ns={{$element.Namespace}}&refresh={{if $.Refresh}}1{{end}}">{{$element.Service}}</a></td>
+          <td><a href="/index.html?zone={{$element.Zone}}&svc={{$element.Service}}&ns={{$element.Namespace}}&refresh={{if $.Refresh}}1{{end}}">{{$element.Zone}}</a></td>
           <td>{{range $index, $endpoint := $element.HostPort}}{{if le $index 1}}{{if gt $index 0}},&nbsp;{{end}}<a href="/index.html?targetserver={{$endpoint}}">{{$endpoint}}</a>{{end}}{{if eq $index 2}}...{{end}}{{end}}</td>
           <td>{{if and $.QueryParms.Service $.QueryParms.AllLabels}}{{$element.CsvLabels}}{{else}}{{len $element.HostPort}}{{end}}</td>
-        {{else if $.QueryParms.Service}}
-          <td>{{$element.Namespace}}</td>
-          <td><a href="/index.html?zone={{$element.Zone}}&svc={{$element.Service}}&ns={{$element.Namespace}}&refresh={{if $.Refresh}}1{{end}}">{{$element.Service}}</a></td>
-          <td>{{$element.Zone}}</td>
-          <td>{{range $epidx, $endpoint := $element.HostPort}}{{if le $epidx 1}}{{if gt $epidx 0}},&nbsp;{{end}}<a href="/index.html?targetserver={{$endpoint}}">{{end}}{{if eq $epidx 2}}&nbsp;...{{end}}{{end}}</td>
-          <td>{{len $element.HostPort}}</td>
-        {{end}}
       </tr>
     {{end}}
   </tbody>

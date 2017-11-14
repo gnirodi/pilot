@@ -14,7 +14,7 @@ const (
 	EnvVarPodServiceAccount = "MY_POD_SERVICE_ACCOUNT"
 	ServerStatus            = "SERVER_STATUS"
 	StatusHeader            = "STATUS_HEADER"
-	ServerStatusHeader      = "Istio Hybrid Multi-Zone Mesh Status"
+	ServerStatusHeader      = "Istio Hybrid Multi-Cluster Mesh Status"
 	StartTime               = "START_TIME"
 	UpdateTime              = "UPDATE_TIME"
 )
@@ -41,6 +41,9 @@ func NewZoneDisplayInfo(z string, epssMap *EndpointSubsetMap) *ZoneDisplayInfo {
 	svcSet := map[string]bool{}
 	if epssMap != nil {
 		for _, epss := range epssMap.epSubset {
+			if epss.Zone != z {
+				continue
+			}
 			svcSet[epss.Namespace+"/"+epss.Service] = true
 			countEp = countEp + len(epss.KeyEndpointMap)
 		}
