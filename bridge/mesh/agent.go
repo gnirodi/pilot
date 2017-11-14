@@ -43,6 +43,7 @@ type EndpointDisplayInfo struct {
 	Zone      *string
 	CsvLabels *string
 	AllLabels *string
+	DnsName   *string
 	HostPort  []string
 }
 
@@ -270,7 +271,7 @@ func (a *MeshSyncAgent) GetActualEndpointSubsets(endpointLabel string, epssMap *
 	}
 }
 
-func (a *MeshSyncAgent) ExecuteEndpointQuery(query *EndpointDisplayInfo) []*EndpointDisplayInfo {
+func (a *MeshSyncAgent) ExecuteEndpointQuery(query *EndpointDisplayInfo) ([]*EndpointDisplayInfo, *string) {
 	res := []*EndpointDisplayInfo{}
 	hasLabels := query.CsvLabels != nil
 	hasZone := query.Zone != nil
@@ -286,7 +287,7 @@ func (a *MeshSyncAgent) ExecuteEndpointQuery(query *EndpointDisplayInfo) []*Endp
 				msg := fmt.Sprintf("Comma separated labels should be in the form name1=value1,name2=value2,...Found :'%s'", *query.CsvLabels)
 				a.currentRunInfo.AddAgentWarning(msg)
 				glog.Error(msg)
-				return res
+				return res, nil
 			}
 			labels[nameValues[0]] = nameValues[1]
 		}
@@ -302,13 +303,33 @@ func (a *MeshSyncAgent) ExecuteEndpointQuery(query *EndpointDisplayInfo) []*Endp
 	if hasService {
 		Service = *query.Service
 	}
+
 	meshResolver := NewMeshResolver(a.clientset)
-	nsSvcEndpoints, err := meshResolver.LookupSvcEndpointsBySvcName(Namespace, Service, labels)
+	var nsSvcEndpoints NamespaceServiceEndpoints
+	var ResolvedIP *string
+	var err error
+	if query.DnsName == nil {
+		nsSvcEndpoints, err = meshResolver.LookupSvcEndpointsBySvcName(Namespace, Service, labels)
+	} else {
+		ipAddrs, err := net.LookupHost(*query.DnsName)
+		if err != nil {
+			msg := err.Error()
+			glog.Error(msg)
+			return res, &msg
+		}
+		if len(ipAddrs) == 0 {
+			msg := fmt.Sprintf("No IP addresses were found for DNS name '%s'", *query.DnsName)
+			glog.Error(msg)
+			return res, &msg
+		}
+		ResolvedIP = &ipAddrs[0]
+		nsSvcEndpoints, err = meshResolver.LookupSvcEndpointsByIp(ipAddrs[0], labels)
+	}
 	if err != nil {
 		msg := fmt.Sprintf("Error fetching endpoints: %s", err.Error())
 		a.currentRunInfo.AddAgentWarning(msg)
 		glog.Error(msg)
-		return res
+		return res, nil
 	}
 	sortedNs := nsSvcEndpoints.GetSortedNamespaces()
 	for _, ns := range sortedNs {
@@ -324,7 +345,7 @@ func (a *MeshSyncAgent) ExecuteEndpointQuery(query *EndpointDisplayInfo) []*Endp
 				for _, epss := range epssList {
 					for _, ep := range epss.KeyEndpointMap {
 						if isFirstZoneRow || (hasZone && hasService) {
-							zoneDispEpInfo = &EndpointDisplayInfo{&epss.Namespace, &epss.Service, &epss.Zone, nil, nil, []string{}}
+							zoneDispEpInfo = &EndpointDisplayInfo{&epss.Namespace, &epss.Service, &epss.Zone, nil, nil, nil, []string{}}
 							res = append(res, zoneDispEpInfo)
 						}
 						hostport := net.JoinHostPort(ep.PodIP, fmt.Sprintf("%d", ep.Port.ContainerPort))
@@ -343,7 +364,7 @@ func (a *MeshSyncAgent) ExecuteEndpointQuery(query *EndpointDisplayInfo) []*Endp
 			}
 		}
 	}
-	return res
+	return res, ResolvedIP
 }
 
 func (a *MeshSyncAgent) ReconcileExtServiceList(dnsSvcCreateSet map[string]*Service, dnsSvcDeleteSet map[string]*Service) {

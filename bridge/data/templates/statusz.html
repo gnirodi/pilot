@@ -52,7 +52,7 @@
 *****************************************************
 */}}
 <form action="/index.html" method="get">
-  Check Server Health: Server IP or Service Name <input type="text" name="targetserver"> <input type="submit" value="Submit">&nbsp;&nbsp;Refresh <input type="checkbox" name="refresh" value="1" {{if .Refresh}} checked {{end}} >
+  Check Endpoint Health: <input type="text" name="targetserver"> <input type="submit" value="Submit">&nbsp;&nbsp;Refresh <input type="checkbox" name="refresh" value="1" {{if .Refresh}} checked {{end}} >
 </form>
 {{if .Refresh}}
 <script>
@@ -64,9 +64,30 @@
 {{if .TargetHealthzResponse}}
 <br>
 Server Healthz Response from: {{.TargetUrl}}
+<div>
 <pre>
 {{.TargetHealthzResponse}}
 </pre>
+</div>
+{{end}}
+<hr>
+{{/*
+*****************************************************
+                  DNS Query form
+*****************************************************
+*/}}
+<br>
+<form action="/index.html" method="get">
+  DNS: <input type="text" name="dns" {{if .QueryParms.DnsName}}value="{{.QueryParms.DnsName}}"{{end}}> &nbsp; &nbsp;
+  Labels: <input type="text" name="lbls" {{if .QueryParms.CsvLabels}}value="{{.QueryParms.CsvLabels}}"{{end}}> &nbsp; &nbsp;
+  Display All Labels: <input type="checkbox" name="all" value="1" {{if .QueryParms.AllLabels}} checked {{end}} >  
+  <input type="submit" value="Submit">
+</form>
+{{if .ResolvedIP}}
+<br>
+<div>
+DNS lookup response for {{.QueryParms.DnsName}}: {{.ResolvedIP}}
+</div>
 {{end}}
 <hr>
 {{/*

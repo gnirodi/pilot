@@ -15,11 +15,12 @@ type StatuszInfo struct {
 	TargetUrl             *string
 	TargetHealthzResponse *string
 	QueryParms            EndpointDisplayInfo
+	ResolvedIP            *string
 	QueryResult           []*EndpointDisplayInfo
 }
 
 func NewStatuszInfo(mi *MeshInfo) *StatuszInfo {
-	csi := StatuszInfo{mi, nil, nil, nil, EndpointDisplayInfo{}, []*EndpointDisplayInfo{}}
+	csi := StatuszInfo{mi, nil, nil, nil, EndpointDisplayInfo{}, nil, []*EndpointDisplayInfo{}}
 	return &csi
 }
 
@@ -40,6 +41,7 @@ func (si *StatuszInfo) Init(agent *MeshSyncAgent, templateDir string) {
 		hasZone := GetParmValue(r, "zone", &csi.QueryParms.Zone)
 		hasService := GetParmValue(r, "svc", &csi.QueryParms.Service)
 		hasNamespace := GetParmValue(r, "ns", &csi.QueryParms.Namespace)
+		hasDnsName := GetParmValue(r, "dns", &csi.QueryParms.DnsName)
 		GetParmValue(r, "lbls", &csi.QueryParms.CsvLabels)
 		GetParmValue(r, "all", &csi.QueryParms.AllLabels)
 		switch {
@@ -60,8 +62,8 @@ func (si *StatuszInfo) Init(agent *MeshSyncAgent, templateDir string) {
 				csi.TargetHealthzResponse = &targetResp
 			}
 			break
-		case hasZone || hasService || hasNamespace:
-			csi.QueryResult = agent.ExecuteEndpointQuery(&csi.QueryParms)
+		case hasZone || hasService || hasNamespace || hasDnsName:
+			csi.QueryResult, csi.ResolvedIP = agent.ExecuteEndpointQuery(&csi.QueryParms)
 			break
 		}
 		err := tmpl.ExecuteTemplate(w, "statusz.html", csi)
