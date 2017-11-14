@@ -324,6 +324,8 @@ func (a *MeshSyncAgent) ExecuteEndpointQuery(query *EndpointDisplayInfo) ([]*End
 		}
 		ResolvedIP = &ipAddrs[0]
 		nsSvcEndpoints, query.Namespace, query.Service, err = meshResolver.LookupSvcEndpointsByIp(ipAddrs[0], labels)
+		tmpZoneHack := ""
+		query.Zone = &tmpZoneHack
 	}
 	if err != nil {
 		msg := fmt.Sprintf("Error fetching endpoints: %s", err.Error())
