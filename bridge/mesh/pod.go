@@ -3,6 +3,7 @@ package mesh
 import (
 	"math"
 	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/golang/glog"
@@ -197,6 +198,10 @@ func (l *PodList) GetExpectedEndpointSubsets(localZoneName string, keySvcMap *ma
 		// Label name to PodKeySet that has matching values
 		lblPksMap := map[string]PodKeySet{}
 		allKeyValsFound := true // All labels must have values
+
+		var svcEpHostPort string
+		var svcEpTemplate *Endpoint
+
 		for k, v := range svc.Labels {
 			vm, vmFound := nsPods.labelMap[k]
 			if !vmFound || len(vm) == 0 {
@@ -242,7 +247,35 @@ func (l *PodList) GetExpectedEndpointSubsets(localZoneName string, keySvcMap *ma
 		for pk, _ := range intPks {
 			mshpd, _ := nsPods.keyPodMap[pk]
 			for _, t := range mshpd.EpTemplates {
-				esm.AddEndpoint(&t, svc.Name, localZoneName)
+				hostPort, addedEp := esm.AddEndpoint(&t, svc.Name, localZoneName)
+				if svcEpTemplate == nil || (strings.Compare(hostPort, svcEpHostPort) < 0) {
+					svcEpHostPort = hostPort
+					svcEpTemplate = addedEp
+				}
+			}
+		}
+
+		// Check if we have a service endpoint setup
+		if svcEpTemplate != nil {
+			svcEpKey := svc.Namespace + "/" + svc.Name
+			svcEpss, svcEpssFound := esm.epSubset[svcEpKey]
+			if svcEpssFound {
+				// Host ports must be the same
+				_, svcEpssFound = svcEpss.HostPortSet[svcEpHostPort]
+			}
+			if !svcEpssFound {
+				svcEpssLabels := map[string]string{}
+				for k, v := range svc.Labels {
+					svcEpssLabels[k] = v
+				}
+				svcEpssLabels[LabelMeshDnsIp] = svcEpTemplate.PodIP
+				svcEpss := NewEndpointSubset(svcEpKey, ns, svc.Name, localZoneName, svcEpTemplate.SrvPort, svcEpssLabels)
+				svcEpss.HostPortSet[svcEpHostPort] = true
+				svcEp := svcEpTemplate.DeepCopy()
+				svcEp.PodLabels[LabelMeshDnsIp] = svcEpTemplate.PodIP
+				svcEpss.Name = svc.Name
+				svcEpss.KeyEndpointMap[svcEpKey] = svcEp
+				esm.epSubset[svcEpKey] = svcEpss
 			}
 		}
 	}

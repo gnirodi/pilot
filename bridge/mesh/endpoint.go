@@ -124,7 +124,7 @@ func (epss *EndpointSubset) DeepCopy() *EndpointSubset {
 	}
 	for keyEp, ep := range epss.KeyEndpointMap {
 		clone.KeyEndpointMap[keyEp] = ep.DeepCopy()
-		epss.HostPortSet[net.JoinHostPort(ep.PodIP, fmt.Sprintf("%d", ep.Port.ContainerPort))] = true
+		clone.HostPortSet[net.JoinHostPort(ep.PodIP, fmt.Sprintf("%d", ep.Port.ContainerPort))] = true
 	}
 	return clone
 }
@@ -186,7 +186,7 @@ func (m *EndpointSubsetMap) GetNamedSubsets() map[string]*EndpointSubset {
 	return m.epSubset
 }
 
-func (m *EndpointSubsetMap) AddEndpoint(template *Endpoint, svc string, zone string) {
+func (m *EndpointSubsetMap) AddEndpoint(template *Endpoint, svc string, zone string) (string, *Endpoint) {
 	ep := template.DeepCopy()
 	ep.Service = svc
 	ep.Zone = zone
@@ -200,6 +200,9 @@ func (m *EndpointSubsetMap) AddEndpoint(template *Endpoint, svc string, zone str
 		m.epNameSet[ss.Name] = true
 	}
 	ss.KeyEndpointMap[ep.Key] = ep
+	hostPort := net.JoinHostPort(ep.PodIP, fmt.Sprintf("%d", ep.Port.ContainerPort))
+	ss.HostPortSet[hostPort] = true
+	return hostPort, ep
 }
 
 func (m *EndpointSubsetMap) EnsureUniqueName(eps *EndpointSubset) {
@@ -269,6 +272,8 @@ func BuildEndpointSubsetMapFromList(l *v1.EndpointsList, m *EndpointSubsetMap) {
 				subsetKey := ept.BuildSubsetKey()
 				if isExternal {
 					subsetKey = GetActualDnsEpInfoKey(&vep)
+				} else if vep.Name == svc {
+					subsetKey = ns + "/" + svc
 				}
 				ss, ssFound := m.epSubset[subsetKey]
 				if !ssFound {

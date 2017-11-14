@@ -99,12 +99,12 @@ func (nsEp *NamespaceServiceEndpoints) GetSortedNamespaces() []string {
 }
 
 // Uses an IP address to reverse lookup a 2 level map: namespace to service to list of EndpointSubsets
-func (r *MeshResolver) LookupSvcEndpointsByIp(ipAddress string, labels map[string]string) (nsSvcEpss NamespaceServiceEndpoints, err error) {
+func (r *MeshResolver) LookupSvcEndpointsByIp(ipAddress string, labels map[string]string) (nsSvcEpss NamespaceServiceEndpoints, ns, svc *string, err error) {
 	opts := v1.ListOptions{}
 	opts.LabelSelector = strings.Join([]string{LabelMeshDnsIp, ipAddress}, "=")
 	l, err := r.clientset.CoreV1().Endpoints("").List(opts)
 	if err != nil {
-		return nsSvcEpss, err
+		return nsSvcEpss, nil, nil, err
 	}
 	nsSvcEpss = NamespaceServiceEndpoints{}
 	for _, ep := range l.Items {
@@ -112,14 +112,10 @@ func (r *MeshResolver) LookupSvcEndpointsByIp(ipAddress string, labels map[strin
 		if ns == "" {
 			ns = v1.NamespaceDefault
 		}
-		dnsName := strings.Join([]string{ns, ep.Name}, ".")
-		epss, err := r.LookupSvcEndpointsByDns(dnsName, map[string]string{})
-		if err != nil {
-			return nsSvcEpss, err
-		}
-		nsSvcEpss.AddEndpointSubsetMap(&epss)
+		nsSvcEpss, err = r.LookupSvcEndpointsBySvcName(ns, ep.Name, labels)
+		return nsSvcEpss, &ns, &ep.Name, nil
 	}
-	return nsSvcEpss, nil
+	return nsSvcEpss, nil, nil, nil
 }
 
 func dnsNamesToLables(dnsName string, nvPairs *[]string) (string, error) {
