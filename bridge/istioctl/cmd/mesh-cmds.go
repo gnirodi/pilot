@@ -401,6 +401,11 @@ func (r *IstioClusterRegistry) checkAndCreateMeshResource(ctx, zoneName string, 
 		}
 		if !identicalResource {
 			fmt.Printf("Updating cluster '%s' with cluster context '%s': Updating mesh config: %s\n", zoneName, ctx, meshResource.Name)
+			existingMesh, err := clientset.PkgV1().Meshs().Get(meshResource.Name, v1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			meshResource.ResourceVersion = existingMesh.ResourceVersion
 			_, err = clientset.PkgV1().Meshs().Update(meshResource)
 			if err != nil {
 				return err
