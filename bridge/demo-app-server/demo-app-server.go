@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"istio.io/pilot/bridge/mesh"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -29,6 +30,9 @@ const (
 	EnvVarPodServiceAccount = "MY_POD_SERVICE_ACCOUNT"
 	ServerStatus            = "MY_SERVER_STATUS"
 	StatusHeader            = "APP_NAME"
+	CountRequests           = "COUNT_REQUESTS"
+	CountErrors             = "COUNT_ERRORS"
+	CountBackendErrors      = "COUNT_BACKEND_ERRORS"
 )
 
 var docRoot = flag.String("template_dir", "data/templates", "Root for http templates")
@@ -42,6 +46,92 @@ func buildStatus(m *map[string]string) {
 	(*m)[EnvVarPodIP] = os.Getenv(EnvVarPodIP)
 	(*m)[EnvVarPodServiceAccount] = os.Getenv(EnvVarPodServiceAccount)
 	(*m)[ServerStatus] = "OK"
+}
+
+type LoadRequest struct {
+	target             string
+	targetLabels       string
+	url                string
+	qps                int
+	countRequests      int64
+	countErrors        int64
+	countBackendErrors int64
+	cachedResolver     *CachedEndpoints
+	requestQueue       chan struct{}
+	stop               chan struct{}
+	mu                 sync.RWMutex
+}
+
+func NewLoadRequest(cachedResolver *CachedEndpoints) *LoadRequest {
+	return &LoadRequest{"", "", "", 0, 0, 0, 0, cachedResolver, make(chan struct{}, 5000), make(chan struct{}, 1), sync.RWMutex{}}
+}
+
+func (lr *LoadRequest) ReadStats() (int, int64, int64, int64) {
+	lr.mu.RLock()
+	defer lr.mu.RUnlock()
+	return lr.qps, lr.countRequests, lr.countErrors, lr.countBackendErrors
+}
+
+func (lr *LoadRequest) ReadTargetParms() (int, string, string, string) {
+	lr.mu.RLock()
+	defer lr.mu.RUnlock()
+	return lr.qps, lr.target, lr.targetLabels, lr.url
+}
+
+func (lr *LoadRequest) SetTargetParms(qps int, nextPingTarget, nextPingTargetLbls, nextPingSvcList string) {
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
+	lr.qps = qps
+	lr.target = nextPingTarget
+	lr.targetLabels = nextPingTargetLbls
+	lr.url = "/ping.html?services=" + nextPingSvcList
+}
+
+func (lr *LoadRequest) UpdateCounters(err error, backendError bool) {
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
+	lr.countRequests++
+	if err != nil {
+		lr.countErrors++
+	}
+	if backendError {
+		lr.countBackendErrors++
+	}
+}
+
+func (lr *LoadRequest) Run() {
+	for {
+		<-lr.requestQueue
+		qps, target, targetLabels, url := lr.ReadTargetParms()
+		if qps > 0 && target != "" && url != "" {
+			var err error = nil
+			var backendError = false
+			hostPort, err := lr.cachedResolver.GetEndpoints(target, targetLabels)
+			if err == nil {
+				if resp, err := http.Get("http://" + hostPort + url); err == nil {
+					defer resp.Body.Close()
+					if body, err := ioutil.ReadAll(resp.Body); err == nil {
+						respText := string(body)
+						if strings.Contains(respText, "Backend Error") {
+							backendError = true
+						}
+					}
+				}
+			}
+			lr.UpdateCounters(err, backendError)
+		}
+	}
+}
+
+func (lr *LoadRequest) RunLoad() {
+	qps, target, _, url := lr.ReadTargetParms()
+	if qps == 0 || target == "" || url == "" {
+		return
+	}
+	for rq := 0; rq < qps; rq++ {
+		var nextReq struct{}
+		lr.requestQueue <- nextReq
+	}
 }
 
 type CachedEndpoints struct {
@@ -138,6 +228,12 @@ func main() {
 	cachedResolver := NewCachedEndpoints()
 	cachedResolver.Init(kubeconfig)
 
+	loadRequest := NewLoadRequest(cachedResolver)
+	for i := 0; i < 10; i++ {
+		go loadRequest.Run()
+	}
+	go wait.Until(loadRequest.RunLoad, time.Second, loadRequest.stop)
+
 	http.HandleFunc("/ping.html", func(w http.ResponseWriter, r *http.Request) {
 		services := GetParmValue(r, "services")
 		isFirstSvc := true
@@ -145,7 +241,20 @@ func main() {
 		nextPingTargetLbls := ""
 		nextPingSvcList := ""
 		svcParms := map[string]string{}
-		err := tmpl.ExecuteTemplate(w, "healthz.html", &serverStatus)
+
+		loadStatus := map[string]string{}
+		for k, v := range serverStatus {
+			loadStatus[k] = v
+		}
+		qps, countRequests, countErrors, countBackendErrors := loadRequest.ReadStats()
+
+		if qps > 0 {
+			loadStatus[CountRequests] = fmt.Sprintf("%d", countRequests)
+			loadStatus[CountErrors] = fmt.Sprintf("%d", countErrors)
+			loadStatus[CountBackendErrors] = fmt.Sprintf("%d", countBackendErrors)
+		}
+
+		err := tmpl.ExecuteTemplate(w, "healthz.html", &loadStatus)
 		if err != nil {
 			fmt.Printf("Error in statusz.html:\n%s", err.Error())
 			return
@@ -175,6 +284,16 @@ func main() {
 			}
 		}
 		if nextPingTarget != "" {
+			qpsParm := GetParmValue(r, "qps")
+			if qpsParm != nil {
+				var qps int
+				_, err := fmt.Sscanf(*qpsParm, "%d", &qps)
+				if err != nil {
+					return
+				}
+				loadRequest.SetTargetParms(qps, nextPingTarget, nextPingTargetLbls, nextPingSvcList)
+				return
+			}
 			separator := "\n" + strings.Repeat("-", 20) + "\n"
 			w.Write([]byte(separator))
 			hostPort, err := cachedResolver.GetEndpoints(nextPingTarget, nextPingTargetLbls)
