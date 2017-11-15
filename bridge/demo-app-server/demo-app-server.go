@@ -298,12 +298,12 @@ func main() {
 			w.Write([]byte(separator))
 			hostPort, err := cachedResolver.GetEndpoints(nextPingTarget, nextPingTargetLbls)
 			if err != nil {
-				errMsg := fmt.Sprintf("Error resolving target '%s' for labels '%s'. Error: '%s'", nextPingTarget, nextPingTargetLbls, err.Error())
+				errMsg := fmt.Sprintf("Backend Error resolving target '%s' for labels '%s'. Error: '%s'", nextPingTarget, nextPingTargetLbls, err.Error())
 				w.Write([]byte(errMsg))
 				return
 			}
 			if hostPort == "" {
-				errMsg := fmt.Sprintf("Error resolving target '%s' for labels '%s'", nextPingTarget, nextPingTargetLbls)
+				errMsg := fmt.Sprintf("Backend Error resolving target '%s' for labels '%s'", nextPingTarget, nextPingTargetLbls)
 				w.Write([]byte(errMsg))
 				return
 			}
@@ -316,10 +316,10 @@ func main() {
 				if body, err := ioutil.ReadAll(resp.Body); err == nil {
 					w.Write(body)
 				} else {
-					w.Write([]byte(err.Error() + "\n"))
+					w.Write([]byte("Backend Error: " + err.Error() + "\n"))
 				}
 			} else {
-				w.Write([]byte(err.Error() + "\n"))
+				w.Write([]byte("Backend Error: " + err.Error() + "\n"))
 			}
 		}
 	})
