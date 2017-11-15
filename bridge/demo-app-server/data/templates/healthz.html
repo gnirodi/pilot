@@ -4,3 +4,8 @@ node: {{.MY_NODE_NAME}}
 pod: {{.MY_POD_NAME}}
 podNameSpace: {{.MY_POD_NAMESPACE}}
 podIP: {{.MY_POD_IP}}
+{{if .COUNT_REQUESTS }}
+countRequests: {{.COUNT_REQUESTS}}
+countErrors: {{.COUNT_ERRORS}}
+countBackendErrors: {{.COUNT_BACKEND_ERRORS}}
+{{end}}

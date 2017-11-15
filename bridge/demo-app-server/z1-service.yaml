@@ -1,0 +1,229 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: product-v1
+spec:
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: product
+        version: v1
+    spec:
+      containers:
+        - name: product-v1
+          image: gcr.io/istio-multizone-hybrid/demo-app-server:live
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: APP_NAME
+              value: product-v1
+            - name: MY_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: MY_POD_SERVICE_ACCOUNT
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: details-v1
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: details
+        version: v1
+    spec:
+      containers:
+        - name: details-v1
+          image: gcr.io/istio-multizone-hybrid/demo-app-server:live
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: APP_NAME
+              value: details-v1
+            - name: MY_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: MY_POD_SERVICE_ACCOUNT
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: loadrunner
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: loadrunner
+        version: v1
+    spec:
+      containers:
+        - name: loadrunner-v1
+          image: gcr.io/istio-multizone-hybrid/demo-app-server:live
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: APP_NAME
+              value: loadrunner-v1
+            - name: MY_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: MY_POD_SERVICE_ACCOUNT
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: prometheus-server
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: prometheus
+        version: v2
+    spec:
+      containers:
+        - name: prometheus-server
+          image: gcr.io/istio-multizone-hybrid/prometheus-server:live
+          imagePullPolicy: Always
+          command: ["/go/bin/prometheus"]
+          args: ["--config.file=/go/data/prometheus.yml"]
+          ports:
+            - containerPort: 9090
+              name: http
+              protocol: TCP
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: grafana
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: gcr.io/istio-multizone-hybrid/grafana-server:live
+        imagePullPolicy: Always
+        command: ["/go/bin/grafana-server"]
+        args: ["-config", "/go/data/grafana.ini", "-homepath", "/go/src/github.com/grafana/grafana/", "web"]
+        ports:
+          - containerPort: 8080
+        env:
+        - name: GRAFANA_PORT
+          value: "8080"
+        - name: GF_AUTH_BASIC_ENABLED
+          value: "false"
+        - name: GF_AUTH_ANONYMOUS_ENABLED
+          value: "true"
+        - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+          value: Admin
+        - name: GF_PATHS_DATA
+          value: /go/data/grafana
+        volumeMounts:
+        - mountPath: /go/data/grafana
+          name: grafana-data
+      volumes:
+      - name: grafana-data
+        emptyDir: {}
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: product
+  # Annotations for Istio Mesh
+  annotations:
+    config.istio.io/mesh.deployment-selector: |
+      {"app":"product"}
+spec:
+  # Service has no selectors
+  #
+  # Service is HEADLESS
+  clusterIP: None
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8080
+    targetPort: 8080
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: details
+  # Annotations for Istio Mesh
+  annotations:
+    config.istio.io/mesh.deployment-selector: |
+      {"app":"details"}
+spec:
+  # Service has no selectors
+  #
+  # Service is HEADLESS
+  clusterIP: None
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8080
+    targetPort: 8080

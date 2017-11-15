@@ -1,0 +1,10 @@
+FROM golang
+
+ADD ./prometheus.yml /go/data/prometheus.yml
+
+RUN go get github.com/prometheus/prometheus/cmd/...
+
+ENTRYPOINT /go/bin/prometheus
+
+# Document that the service listens on port 9090 by default.
+EXPOSE 9090

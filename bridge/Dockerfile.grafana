@@ -1,0 +1,16 @@
+FROM golang
+
+ADD ./grafana.ini /go/data/grafana.ini
+
+# Build the webservice application for the container.
+# This service has no dependencies for now. But if we add deps
+# we'll need to add them here manually or tools like "godep"
+RUN go get github.com/grafana/grafana; exit 0
+RUN cd /go/src/github.com/grafana/grafana && go run build.go setup
+RUN cd /go/src/github.com/grafana/grafana && go run build.go build
+
+# Run the webservice command by default when the container starts.
+ENTRYPOINT /go/bin/grafana-server
+
+# Document that the service listens on port 8080 by default.
+EXPOSE 8080

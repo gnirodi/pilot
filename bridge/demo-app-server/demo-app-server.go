@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	// Uncomment the following line to load the gcp plugin (only required to authenticate against GKE clusters).
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 )
 
@@ -323,6 +324,8 @@ func main() {
 			}
 		}
 	})
+
+	http.Handle("/metrics", promhttp.Handler())
 
 	http.ListenAndServe(":"+*httpPort, nil)
 }

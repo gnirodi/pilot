@@ -1,0 +1,234 @@
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: product-beta
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: product
+        version: v1
+    spec:
+      containers:
+        - name: product-v1
+          image: gcr.io/istio-multizone-hybrid/demo-app-server:live
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: APP_NAME
+              value: product-beta
+            - name: MY_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: MY_POD_SERVICE_ACCOUNT
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: details-v1
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: details
+        version: beta
+    spec:
+      containers:
+        - name: details-v1
+          image: gcr.io/istio-multizone-hybrid/demo-app-server:live
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: APP_NAME
+              value: details-v1
+            - name: MY_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: MY_POD_SERVICE_ACCOUNT
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: details-v2
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: details
+        version: v2
+    spec:
+      containers:
+        - name: details-v2
+          image: gcr.io/istio-multizone-hybrid/demo-app-server:live
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: APP_NAME
+              value: details-v2
+            - name: MY_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: MY_POD_SERVICE_ACCOUNT
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: ratings-alpha
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: ratings
+        version: alpha
+    spec:
+      containers:
+        - name: ratings-alpha
+          image: gcr.io/istio-multizone-hybrid/demo-app-server:live
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: APP_NAME
+              value: ratings-alpha
+            - name: MY_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: MY_POD_SERVICE_ACCOUNT
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: product
+  # Service has no selectors
+  #
+  # Annotations for Istio Mesh
+  annotations:
+    config.istio.io/mesh.deployment-selector: |
+      {"app":"product"}
+spec:
+  # Service is HEADLESS
+  clusterIP: None
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8080
+    targetPort: 8080
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: details
+  # Service has no selectors
+  #
+  # Annotations for Istio Mesh
+  annotations:
+    config.istio.io/mesh.deployment-selector: |
+      {"app":"details"}
+spec:
+  # Service is HEADLESS
+  clusterIP: None
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8080
+    targetPort: 8080
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: ratings
+  # Service has no selectors
+  #
+  # Annotations for Istio Mesh
+  annotations:
+    config.istio.io/mesh.deployment-selector: |
+      {"app":"ratings"}
+spec:
+  # Service is HEADLESS
+  clusterIP: None
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8080
+    targetPort: 8080
+---

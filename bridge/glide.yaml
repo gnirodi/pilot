@@ -28,3 +28,9 @@ import:
   - tools/cache
   - tools/clientcmd
   - util/workqueue
+- package: github.com/prometheus/client_golang
+  subpackages:
+  - client_model/go
+  - common/expfmt
+  - common/model
+  - procfs
