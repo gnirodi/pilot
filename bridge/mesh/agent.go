@@ -323,9 +323,10 @@ func (a *MeshSyncAgent) ExecuteEndpointQuery(query *EndpointDisplayInfo) ([]*End
 			return res, &msg
 		}
 		ResolvedIP = &ipAddrs[0]
+		query.Zone = nil
+		tempServiceHack := ""
+		query.Service = &tempServiceHack
 		nsSvcEndpoints, query.Namespace, query.Service, err = meshResolver.LookupSvcEndpointsByIp(ipAddrs[0], labels)
-		tmpZoneHack := ""
-		query.Zone = &tmpZoneHack
 	}
 	if err != nil {
 		msg := fmt.Sprintf("Error fetching endpoints: %s", err.Error())
@@ -352,7 +353,7 @@ func (a *MeshSyncAgent) ExecuteEndpointQuery(query *EndpointDisplayInfo) ([]*End
 						}
 						hostport := net.JoinHostPort(ep.PodIP, fmt.Sprintf("%d", ep.Port.ContainerPort))
 						zoneDispEpInfo.HostPort = append(zoneDispEpInfo.HostPort, hostport)
-						if hasZone && hasService {
+						if !hasZone && hasService {
 							labels := []string{}
 							for k, v := range ep.PodLabels {
 								labels = append(labels, strings.Join([]string{k, v}, "="))

@@ -2,6 +2,7 @@ package mesh
 
 import (
 	"fmt"
+	"net"
 	"sort"
 	"strings"
 
@@ -189,4 +190,18 @@ func (r *MeshResolver) LookupSvcEndpointsBySvcName(ns, serviceName string, label
 	nsSvcEpss = NamespaceServiceEndpoints{}
 	nsSvcEpss.AddEndpointSubsetMap(&keyToEpssMap)
 	return nsSvcEpss, nil
+}
+
+func (r *MeshResolver) GetSvcEndpointsBySvcName(dnsName string, labels map[string]string) ([]string, error) {
+	epssMap, err := r.LookupSvcEndpointsByDns(dnsName, labels)
+	epList := []string{}
+	if err != nil {
+		return epList, err
+	}
+	for _, epss := range epssMap.epSubset {
+		for _, ep := range epss.KeyEndpointMap {
+			epList = append(epList, net.JoinHostPort(ep.PodIP, fmt.Sprintf("%d", ep.Port.ContainerPort)))
+		}
+	}
+	return epList, nil
 }
